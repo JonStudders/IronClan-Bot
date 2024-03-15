@@ -1,0 +1,11 @@
+{
+  "name": "ironclan-bot",
+  "version": "1.0.0",
+  "description": "A bot for the OldSchool Runescape Iron Clan discord server.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "JonStudders",
+  "license": "ISC"
+}
