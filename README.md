@@ -3,9 +3,11 @@
 
 ## Bingo Leader board
 Posts a leader board into a designated channel every 10 minutes, pulling data from a google sheet.
+
 ![enter image description here](https://i.imgur.com/eDov723.png)
 
 Spreadsheet example:
+
 ![enter image description here](https://i.imgur.com/7z2WVxU.png)
 
 ## .env file
