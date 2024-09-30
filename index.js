@@ -3,7 +3,6 @@ require('dotenv').config()
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const PublicGoogleSheetsParser = require('public-google-sheets-parser');
 const async = require('async');
-
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const spreadsheetId  = process.env.sheetId;
 const options = { sheetName: 'Leaderboard' }
@@ -23,18 +22,32 @@ async function getLeaderboard() {
     return data;
   });
 
+
   let leaderboardArray = [];
+  let count = 0;
 
   leaderboardData.forEach((row) => {
-    teamName = row['Input your team name here: '];
-    teamPoints = row.Points;
-    leaderboardArray.push({
-      teamName: teamName,
-      Points: teamPoints
-    });
+    if (count < 7 ) {
+      console.log(row);
+      let teamName = row['Team Name '];
+      let teamPoints = row['Points '];
+      let teamCaptain = row['Team Captain '];
+      let teamCoCaptain = row['Team Co-Captain '];
+      let teamPercentage = row['Board Completion % '];
+
+      leaderboardArray.push({
+        teamName: teamName + " - " + teamCaptain + " & " + teamCoCaptain,
+        Points: teamPoints + " Points - " + formatPercentage(teamPercentage) + " Completed",
+      });
+      count++;
+    }
   });
 
   return leaderboardArray;
+}
+
+function formatPercentage(number) {
+  return number === 0 ? '0.00%' : number.toFixed(2) + '%';
 }
 
 function runHourly() {
@@ -69,10 +82,10 @@ async function sendMessage(Leaderboard) {
   let formattedDateTime = await getCurrentDatetime();
   let embed = new EmbedBuilder()
     .setColor('#d129c9')
-    .setTitle('Iron Clan - Spring Bingo 2024')
-    .setDescription('Leaderboard Ranking - ' + formattedDateTime)
-    .setThumbnail('https://i.imgur.com/zRfuj6T.png')
-    .setFooter({ text : 'Made by: blancuh'});
+    .setTitle('Iron Clan - Autumn Bingo 2024')
+    .setDescription('Public Leaderboard: https://shorturl.at/lYQtr\nLast Updated: ' + formattedDateTime)
+    .setThumbnail('https://i.imgur.com/i59D7Uy.png')
+    .setFooter({ text : 'Made by: JStudders'});
 
   let sortedTeams = await sortTeams(Leaderboard);
 
@@ -80,11 +93,11 @@ async function sendMessage(Leaderboard) {
     if (row.Points == undefined) {
       row.Points = 'Error fetching points.';
     } else {
-      row.Points = row.Points + ' Points';
+      row.Points = row.Points;
     }
 
     embed.addFields({
-        "name": row.Points + ' Points',
+        "name": row.Points,
         "value": row.teamName
       });
   })
@@ -92,6 +105,16 @@ async function sendMessage(Leaderboard) {
   let channel = client.channels.cache.get(process.env.discordChannelId);
   channel.send({ embeds: [embed] });
 }
+
+/*
+Iron Clan
+discordServerId=296396357231575041
+discordChannelId=1290321511122735244
+
+Dev
+discordServerId=1011360326593298513
+discordChannelId=1218327027799560233
+*/
 
 async function sortTeams(Leaderboard) {
   // Move undefined values to the bottom
