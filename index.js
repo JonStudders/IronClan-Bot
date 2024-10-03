@@ -36,8 +36,8 @@ async function getLeaderboard() {
       let teamPercentage = row['Board Completion % '];
 
       leaderboardArray.push({
-        teamName: teamName + " - " + teamCaptain + " & " + teamCoCaptain,
-        Points: teamPoints + " Points - " + formatPercentage(teamPercentage) + " Completed",
+        teamName: "`" + teamName + "` - " + teamCaptain + " & " + teamCoCaptain,
+        Points: checkPoints(teamPoints) + " Points - " + formatPercentage(teamPercentage) + " Completed",
       });
       count++;
     }
@@ -47,7 +47,18 @@ async function getLeaderboard() {
 }
 
 function formatPercentage(number) {
+  if (number == undefined) {
+    return 'N/A'
+  }
   return number === 0 ? '0.00%' : number.toFixed(2) + '%';
+}
+
+function checkPoints(number) {
+  if (number == undefined) {
+    return 'N/A'
+  } else {
+    return number
+  }
 }
 
 function runHourly() {
@@ -85,7 +96,7 @@ async function sendMessage(Leaderboard) {
     .setTitle('Iron Clan - Autumn Bingo 2024')
     .setDescription('Public Leaderboard: https://shorturl.at/lYQtr\nLast Updated: ' + formattedDateTime)
     .setThumbnail('https://i.imgur.com/i59D7Uy.png')
-    .setFooter({ text : 'Made by: JStudders'});
+    .setFooter({ text : 'Leaderboard updates every hour\nMute channel to hide notifications\nMade by: JStudders'});
 
   let sortedTeams = await sortTeams(Leaderboard);
 
@@ -117,21 +128,32 @@ discordChannelId=1218327027799560233
 */
 
 async function sortTeams(Leaderboard) {
-  // Move undefined values to the bottom
+  // Helper function to extract the numeric part (X) from "X Points - Y.YY% Completed"
+  function extractPoints(pointsString) {
+    if (!pointsString || pointsString === "N/A") return undefined;  // Handle undefined and "N/A"
+    const pointsMatch = pointsString.match(/^(\d+)/);  // Match the number at the start
+    return pointsMatch ? parseInt(pointsMatch[1], 10) : undefined;
+  }
+
+  // Function to compare two teams based on their Points
   function compareTeams(a, b) {
-    if (a.Points === undefined && b.Points === undefined) {
+    const pointsA = extractPoints(a.Points);
+    const pointsB = extractPoints(b.Points);
+
+    if (pointsA === undefined && pointsB === undefined) {
       return 0;
-    } else if (a.Points === undefined) {
-      return 1;
-    } else if (b.Points === undefined) {
-      return -1;
+    } else if (pointsA === undefined) {
+      return 1;  // a goes after b if a's Points is undefined or "N/A"
+    } else if (pointsB === undefined) {
+      return -1; // b goes after a if b's Points is undefined or "N/A"
     }
-    return b.Points - a.Points;
+    return pointsB - pointsA; // Sort in descending order
   }
 
   Leaderboard.sort(compareTeams);
   return Leaderboard;
 }
+
 
 async function getCurrentDatetime() {
   let currentDate = new Date();
@@ -144,6 +166,9 @@ async function getCurrentDatetime() {
   return `${day}/${month}/${year} ${hours}:${minutes}`;
 }
 
+function addIcon() {
+  let 
+}
 async function updateLeaderboard() {
   var Leaderboard = await getLeaderboard();
   var lastMessage = await getMessages();
