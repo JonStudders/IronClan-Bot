@@ -22,24 +22,28 @@ async function getLeaderboard() {
     return data;
   });
 
-
   let leaderboardArray = [];
   let count = 0;
 
   leaderboardData.forEach((row) => {
-    if (count < 7 ) {
-      console.log(row);
-      let teamName = row['Team Name '];
-      let teamPoints = row['Points '];
-      let teamCaptain = row['Team Captain '];
-      let teamCoCaptain = row['Team Co-Captain '];
-      let teamPercentage = row['Board Completion % '];
+    if (count < 10 ) {
+      // 0,1,3,5,7,8
+      if (count == 2 || count == 4 || count == 6 || count == 8) {
+        count++;
+      } else {
+        console.log(row)
+        let teamName = row['Team Name '];
+        let teamPoints = row['Points '];
+        let teamCaptain = row['Team Captain '];
+        let teamCoCaptain = row['Team Co-Captain '];
+        let teamPercentage = row['Board Completion % '];
 
-      leaderboardArray.push({
-        teamName: "`" + teamName + "` - " + teamCaptain + " & " + teamCoCaptain,
-        Points: checkPoints(teamPoints) + " Points - " + formatPercentage(teamPercentage) + " Completed",
-      });
-      count++;
+        leaderboardArray.push({
+          teamName: "`" + teamName + "` - " + teamCaptain + " & " + teamCoCaptain,
+          Points: checkPoints(teamPoints) + " Points - " + formatPercentage(teamPercentage) + " Completed",
+        });
+        count++;
+      }
     }
   });
 
@@ -50,14 +54,14 @@ function formatPercentage(number) {
   if (number == undefined) {
     return 'N/A'
   }
-  return number === 0 ? '0.00%' : number.toFixed(2) + '%';
+  return number === 0 ? '0.00%' : (number * 100).toFixed(2) + '%';
 }
 
 function checkPoints(number) {
   if (number == undefined) {
     return 'N/A'
   } else {
-    return number
+    return Math.round(number)
   }
 }
 
@@ -89,12 +93,32 @@ async function getMessages() {
   }
 }
 
+function handleColour(Leaderboard) {
+  let leadingTeamName = Leaderboard[0]['teamName'];
+  switch (leadingTeamName) {
+    case '`Big Bald Cunts` - Calapox & FFA':
+      return '#9601f1';
+    case '`Pals Of Weedle` - Weedle 07 & iron v3nture':
+      return '#18f251';
+    case '`Zappers Aint Playin` - Ironborn PVM & gmg':
+      return '#ecebeb';
+    case '`` - Seaman Pumps & Seaman Pend':
+      return '#c82969';
+    case '`Euskadi Ta Askatasuna` - Neurron & Misuli':
+      return '#1c57f1';
+    case '`Pot Arams Winning Gooners` - pot aram & Biggest Dude':
+      return '#1c57f1';
+  }
+}
+
+
 async function sendMessage(Leaderboard) {
   let formattedDateTime = await getCurrentDatetime();
+  let colour = handleColour(Leaderboard);
   let embed = new EmbedBuilder()
-    .setColor('#d129c9')
-    .setTitle('Iron Clan - Autumn Bingo 2024')
-    .setDescription('Public Leaderboard: https://shorturl.at/lYQtr\nLast Updated: ' + formattedDateTime)
+    .setColor(colour)
+    .setTitle('Iron Clan - Winter Bingo 2025')
+    .setDescription('Public Leaderboard: https://bit.ly/4osZatV\nEnds: <t:1765811100:R>\nLast Updated: ' + formattedDateTime)
     .setThumbnail('https://i.imgur.com/i59D7Uy.png')
     .setFooter({ text : 'Leaderboard updates every hour\nMute channel to hide notifications\nMade by: JStudders'});
 
@@ -108,9 +132,9 @@ async function sendMessage(Leaderboard) {
     }
 
     embed.addFields({
-        "name": row.Points,
-        "value": row.teamName
-      });
+      "name": row.Points,
+      "value": row.teamName
+    });
   })
 
   let channel = client.channels.cache.get(process.env.discordChannelId);
@@ -166,9 +190,6 @@ async function getCurrentDatetime() {
   return `${day}/${month}/${year} ${hours}:${minutes}`;
 }
 
-function addIcon() {
-  let 
-}
 async function updateLeaderboard() {
   var Leaderboard = await getLeaderboard();
   var lastMessage = await getMessages();
