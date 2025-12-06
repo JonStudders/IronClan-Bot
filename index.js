@@ -94,6 +94,7 @@ async function getMessages() {
 }
 
 function handleColour(Leaderboard) {
+  return '#9601f1';
   let leadingTeamName = Leaderboard[0]['teamName'];
   switch (leadingTeamName) {
     case '`Big Bald Cunts` - Calapox & FFA':
