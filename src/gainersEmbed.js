@@ -51,18 +51,18 @@ function renderSections(gainers, metrics, limit) {
       const ranked = rankFor(gainers, metric.key, limit);
       if (ranked.length === 0) return null;
 
-      const rows = ranked.map((row, index) => [
-        `${index + 1}.`,
-        fullName(row[metric.key].player),
-        fullName(row.team),
-        formatMetric(metric.key, row[metric.key].value),
-      ]);
-
-      const widths = [0, 1, 2, 3].map((col) => Math.max(...rows.map((r) => r[col].length)));
-      const body = rows
-        .map((r) => `${r[0].padStart(widths[0])} ${r[1].padEnd(widths[1])}  ${r[2].padEnd(widths[2])}  `
-          + `${r[3].padStart(widths[3])}`.trimEnd())
-        .map((line) => line.trimEnd())
+      // Fields are separated rather than padded into columns. Padding to the
+      // longest team name left a huge gap on every short one, and the names
+      // vary too much in length for column alignment to be worth it.
+      const body = ranked
+        .map((row, index) => [
+          `${index + 1}.`,
+          fullName(row[metric.key].player),
+          '|',
+          fullName(row.team),
+          '|',
+          formatMetric(metric.key, row[metric.key].value),
+        ].join(' ').trimEnd())
         .join('\n');
 
       return `${metric.label} gained\n${body}`;

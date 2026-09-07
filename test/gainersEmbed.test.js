@@ -50,15 +50,24 @@ test('long team names are shown in full, never truncated', () => {
   assert.ok(!block.includes('…'), 'no ellipsis anywhere');
 });
 
-test('columns still line up when names differ wildly in length', () => {
+test('fields are separated by pipes, not padded into columns', () => {
+  // Padding to the longest team name left a large gap on every short one.
   const mixed = [
     { team: 'A', ehb: { player: 'X', value: 9 } },
     { team: 'Pot Arams Winning Gooners', ehb: { player: 'IM AlbinP', value: 8 } },
   ];
   const rows = lines(buildGainersEmbed(mixed, withRows(3), FIXED_NOW)).slice(1);
-  assert.equal(rows[0].length, rows[1].length, 'padded rows should share a width');
-  assert.ok(rows[0].endsWith('9.0'), rows[0]);
-  assert.ok(rows[1].endsWith('8.0'), rows[1]);
+  assert.equal(rows[0], '1. X | A | 9.0');
+  assert.equal(rows[1], '2. IM AlbinP | Pot Arams Winning Gooners | 8.0');
+});
+
+test('a short name is not padded out to the longest one', () => {
+  const mixed = [
+    { team: 'A', ehb: { player: 'X', value: 9 } },
+    { team: 'Pot Arams Winning Gooners', ehb: { player: 'IM AlbinP', value: 8 } },
+  ];
+  const [short] = lines(buildGainersEmbed(mixed, withRows(3), FIXED_NOW)).slice(1);
+  assert.ok(!short.includes('   '), `no run of padding in: ${short}`);
 });
 
 // --- Ranking -----------------------------------------------------------------
@@ -158,10 +167,11 @@ test('players are listed best first with a rank number', () => {
 test('each row leads with the player, followed by their team', () => {
   const block = codeBlock(buildGainersEmbed(gainers, withRows(3), FIXED_NOW));
   const [firstEhbRow] = block.split('\n').slice(1);
+  assert.equal(firstEhbRow, '1. A Llama | Llama | 12.4');
+
   // Llamaboy plays for Llama, so the EHP section must pair them.
   const ehpSection = block.split('\n\n')[1];
-  assert.match(ehpSection.split('\n')[1], /Llamaboy\s+Llama/);
-  assert.match(firstEhbRow, /A Llama\s+Llama/);
+  assert.equal(ehpSection.split('\n')[1], '1. Llamaboy | Llama | 9.8');
 });
 
 test('contains no emoji, which would break alignment', () => {

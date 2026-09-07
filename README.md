@@ -78,16 +78,17 @@ columns align. Top 3 per category by default (`gainersRows`), or turn the whole
 message off with `gainers=off`.
 
     EHB gained
-    1. FFA        Big Bald Cunts             73.2
-    2. J aybo     Boats and Hoes             68.5
-    3. IM AlbinP  Pot Arams Winning Gooners  66.2
+    1. FFA | Big Bald Cunts | 73.2
+    2. J aybo | Boats and Hoes | 68.5
+    3. IM AlbinP | Pot Arams Winning Gooners | 66.2
 
     EHP gained
-    1. IronLebanese  Zappers Aint Playin    66.9
+    1. IronLebanese | Zappers Aint Playin | 66.9
     ...
 
-Names are shown in full: columns size themselves to the longest entry rather
-than truncating, since an abbreviated team name is unreadable.
+Names are shown in full rather than truncated, and fields are pipe-separated
+rather than padded into columns - team names vary too much in length for
+columns to line up without leaving a large gap after every short name.
 
 It carries no "Last Updated" line of its own, since the leaderboard sits
 directly above it and has one.
