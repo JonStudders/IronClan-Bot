@@ -6,6 +6,13 @@ const REQUIRED_SETTINGS = ['botToken', 'sheetId', 'channelId'];
 /** Discord caps embeds at 25 fields, so that is the hard ceiling for teams. */
 const MAX_EMBED_FIELDS = 25;
 
+/** The top-gainers message is on unless explicitly switched off. */
+function parseToggle(value, fallback = true) {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (raw === '') return fallback;
+  return !['off', 'false', 'no', '0', 'none'].includes(raw);
+}
+
 function positiveNumber(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -36,6 +43,9 @@ function loadConfig(env = {}) {
     retryIntervalMinutes: positiveNumber(env.retryIntervalMinutes, 1),
     maxTeams: Math.min(positiveNumber(env.maxTeams, MAX_EMBED_FIELDS), MAX_EMBED_FIELDS),
 
+    // The top-gainers message: on | off, and how many teams per metric.
+    showGainers: parseToggle(env.gainers),
+    gainersRows: positiveNumber(env.gainersRows, 3),
     stateFile: env.stateFile || './state.json',
   };
 }
@@ -49,4 +59,4 @@ function validateConfig(config) {
   return config;
 }
 
-module.exports = { loadConfig, validateConfig, REQUIRED_SETTINGS, MAX_EMBED_FIELDS };
+module.exports = { loadConfig, validateConfig, parseToggle, REQUIRED_SETTINGS, MAX_EMBED_FIELDS };

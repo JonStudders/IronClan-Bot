@@ -6,7 +6,11 @@ require('dotenv').config({ quiet: true });
 const { Client, GatewayIntentBits, Events } = require('discord.js');
 
 const { loadConfig, validateConfig } = require('./src/config');
-const { createSheetReader } = require('./src/sheet');
+const { createSheetReader, sortTeams } = require('./src/sheet');
+const { createGridReader } = require('./src/grid');
+const { parseGainers } = require('./src/gainers');
+const { buildEmbed } = require('./src/embed');
+const { buildGainersEmbed, GAINERS_TITLE } = require('./src/gainersEmbed');
 const { createStateStore } = require('./src/state');
 const { createPoster } = require('./src/poster');
 const { createScheduler } = require('./src/scheduler');
@@ -16,12 +20,58 @@ const config = validateConfig(loadConfig(process.env));
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const state = createStateStore({ filePath: config.stateFile });
-const poster = createPoster({ client, config, readTeams: createSheetReader(config), state });
+
+const readTeams = createSheetReader(config);
+const readGrid = createGridReader(config);
+
+/**
+ * Builds every message the bot maintains, in the order they should appear.
+ * The leaderboard is first; the gainer panels follow.
+ *
+ * The gainer tables are read from the raw grid rather than the parsed sheet,
+ * because they sit under blank headers that the row parser drops.
+ */
+async function render({ previousRanks, at }) {
+  const teams = await readTeams();
+
+  if (teams.length === 0) {
+    throw new Error('No teams found in the sheet - refusing to post an empty leaderboard.');
+  }
+
+  const panels = [{
+    key: 'board',
+    title: config.title,
+    embed: buildEmbed(teams, config, at, previousRanks),
+  }];
+
+  if (config.showGainers) {
+    // A failure here must not cost the leaderboard, which is the bot's job.
+    try {
+      const gainers = parseGainers(await readGrid());
+      panels.push({
+        key: 'gainers',
+        title: GAINERS_TITLE,
+        embed: buildGainersEmbed(gainers, config, at),
+      });
+    } catch (error) {
+      console.warn('Could not read top gainers, posting the leaderboard alone:', error.message);
+    }
+  }
+
+  return {
+    panels,
+    teams: sortTeams(teams).slice(0, config.maxTeams),
+    teamCount: teams.length,
+    unresolvedCount: teams.filter((team) => team.points === null).length,
+  };
+}
+
+const poster = createPoster({ client, config, render, state });
 
 const scheduler = createScheduler({
   task: async () => {
-    const { action, teamCount, unresolvedCount, leadChanged, leader } = await poster.update();
-    console.log(`Leaderboard ${action} with ${teamCount} team(s).`);
+    const { action, teamCount, unresolvedCount, panelCount, leadChanged, leader } = await poster.update();
+    console.log(`Leaderboard ${action} with ${teamCount} team(s) across ${panelCount} message(s).`);
     if (leadChanged) {
       console.log(`  Lead changed: ${leader} are now top.`);
     }

@@ -146,3 +146,24 @@ test('sortTeams does not mutate its input', () => {
   sortTeams(teams);
   assert.deepEqual(teams.map((t) => t.teamName), before);
 });
+
+test('a team whose points cell is momentarily blank still appears', () => {
+  // Seen live: a mid-edit sheet left one team with no Total Points value.
+  const rows = [
+    { [POSITION]: '1', 'Team Name ': 'Llama', 'Bonus Points ': 0, 'Team Captain ': 'A Llama' },
+    { [POSITION]: '2', 'Team Name ': 'Fetired', [POINTS]: 300, 'Team Captain ': 'Fetired' },
+  ];
+  const teams = parseTeams(rows);
+  assert.deepEqual(teams.map((t) => t.teamName), ['Llama', 'Fetired']);
+  assert.equal(teams[0].points, null, 'and shows as zero rather than vanishing');
+});
+
+test('the WOM link row is still excluded despite having a team name', () => {
+  const rows = [{ [POSITION]: 'Link to WOM:', 'Team Name ': 'https://wiseoldman.net/groups/1' }];
+  assert.equal(parseTeams(rows).length, 0);
+});
+
+test('a row with a broken team name formula is excluded', () => {
+  const rows = [{ [POSITION]: '2', 'Team Name ': '#REF!', [POINTS]: '#REF!' }];
+  assert.equal(parseTeams(rows).length, 0);
+});

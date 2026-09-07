@@ -32,6 +32,9 @@ function normaliseKeys(row) {
   return Object.fromEntries(Object.entries(row).map(([key, value]) => [key.trim(), value]));
 }
 
+/** The leaderboard's own position column, whose header carries the season name. */
+const POSITION_HEADER = /position$/i;
+
 /** First candidate header actually present on the row, or undefined. */
 function findKey(row, candidates) {
   return candidates.find((name) => Object.hasOwn(row, name));
@@ -59,19 +62,28 @@ function toTrimmedString(value) {
   return String(value).trim();
 }
 
+/** Numbered position, e.g. "1" - only leaderboard rows have one. */
+function hasNumericPosition(row) {
+  const key = Object.keys(row).find((name) => POSITION_HEADER.test(name.trim()));
+  return key !== undefined && toNumberOrNull(row[key]) !== null;
+}
+
 /**
- * A row belongs to the leaderboard if it names a team AND carries the
- * leaderboard's own points column.
+ * A row belongs to the leaderboard if it names a team, and either sits at a
+ * numbered position or carries the leaderboard's own points column.
  *
- * The second test is what separates the leaderboard from the other tables
- * further down the same tab (the WOM link, the "Top EHB gainer per team"
- * block): those rows reuse the first column for their own purposes, so some
- * carry a team name, but none of them have the points column. Filtering rather
- * than stopping at the first non-team row means blank spacer rows inside the
- * leaderboard are still tolerated.
+ * The second half is what separates the leaderboard from the other tables on
+ * the same tab. Rows in the gainer tables reuse the first column for their own
+ * purposes so they carry no team name at all; the WOM link row does have one,
+ * but has neither a numeric position nor a points cell.
+ *
+ * Accepting a numeric position *or* points matters because a team whose points
+ * formula is momentarily blank still belongs on the board - it should show as
+ * zero, not silently vanish.
  */
 function isLeaderboardRow(row) {
-  return toTrimmedString(readCell(row, COLUMNS.teamName)) !== '' && findKey(row, COLUMNS.points) !== undefined;
+  if (toTrimmedString(readCell(row, COLUMNS.teamName)) === '') return false;
+  return hasNumericPosition(row) || findKey(row, COLUMNS.points) !== undefined;
 }
 
 /**
@@ -130,4 +142,5 @@ module.exports = {
   toNumberOrNull,
   isSheetError,
   isLeaderboardRow,
+  hasNumericPosition,
 };

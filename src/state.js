@@ -13,7 +13,7 @@ const path = require('node:path');
  * round of rank arrows, never a crash.
  */
 const EMPTY_STATE = {
-  boardMessageId: null, // the leaderboard message we own
+  panelCount: 0,        // how many messages the bot maintained last time
   previousRanks: {},    // team name -> rank at the previous update
   leader: null,         // { teamName, since } - since is an ISO timestamp
   leadChanges: [],      // newest first: { from, to, at }

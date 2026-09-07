@@ -20,7 +20,7 @@ test('a missing state file reads as empty state, not an error', () => {
   const store = createStateStore({ filePath: tempFile(), log: SILENT });
   const state = store.read();
   assert.deepEqual(state.previousRanks, {});
-  assert.equal(state.boardMessageId, null);
+  assert.equal(state.panelCount, 0);
   assert.equal(state.leader, null);
   assert.deepEqual(state.leadChanges, []);
 });
@@ -28,11 +28,11 @@ test('a missing state file reads as empty state, not an error', () => {
 test('state survives a write and read round trip', () => {
   const filePath = tempFile();
   const store = createStateStore({ filePath, log: SILENT });
-  store.write({ ...store.read(), previousRanks: { Llama: 1 }, boardMessageId: 'm1' });
+  store.write({ ...store.read(), previousRanks: { Llama: 1 }, panelCount: 2 });
 
   const reloaded = createStateStore({ filePath, log: SILENT }).read();
   assert.deepEqual(reloaded.previousRanks, { Llama: 1 });
-  assert.equal(reloaded.boardMessageId, 'm1');
+  assert.equal(reloaded.panelCount, 2);
 });
 
 test('a corrupt state file falls back to empty rather than crashing', () => {
@@ -44,7 +44,7 @@ test('a corrupt state file falls back to empty rather than crashing', () => {
 
 test('an unwritable path is reported but does not throw', () => {
   const store = createStateStore({ filePath: path.join(os.tmpdir(), 'no', 'such', '\0bad'), log: SILENT });
-  assert.equal(store.write({ boardMessageId: null }), false);
+  assert.equal(store.write({ panelCount: 0 }), false);
 });
 
 test('writing leaves no temporary file behind', () => {
@@ -128,13 +128,13 @@ test('rank movement survives a restart via the file', () => {
 test('fields from an older state schema are dropped on read', () => {
   const filePath = tempFile();
   fs.writeFileSync(filePath, JSON.stringify({
-    boards: { fields: 'old', table: 'older' }, // retired in favour of boardMessageId
-    boardMessageId: 'm9',
+    boards: { fields: 'old', table: 'older' }, // retired schema
+    panelCount: 3,
     previousRanks: { A: 1 },
   }));
 
   const state = createStateStore({ filePath, log: SILENT }).read();
-  assert.equal(state.boardMessageId, 'm9');
+  assert.equal(state.panelCount, 3);
   assert.deepEqual(state.previousRanks, { A: 1 });
   assert.ok(!Object.hasOwn(state, 'boards'), 'the retired key should not survive');
 });

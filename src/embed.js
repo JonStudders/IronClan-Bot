@@ -71,14 +71,14 @@ function buildEmbed(teams, config, now = Date.now(), previousRanks = {}) {
   }
 
   for (const row of toRows(teams, previousRanks, config.maxTeams)) {
-    const name = `${medal(row.rank)} ${row.team.teamName}  ${formatRankChange(row.change)}`;
+    // The captain rides on the title line rather than a line of its own, which
+    // saves a line per team on a board of up to 25.
     const captains = [row.team.captain, row.team.coCaptain].filter(Boolean).join(' & ');
+    const name = `${medal(row.rank)} ${row.team.teamName}`
+      + `${captains ? ` - ${captains}` : ''}  ${formatRankChange(row.change)}`;
 
-    const value = [
-      `**${formatNumber(row.team.points)}** pts · ${progressBar(row.team.completion)} `
-        + `${formatPercentage(row.team.completion)} · ${formatGap(row.gap)}`,
-      captains ? `Captain: ${captains}` : null,
-    ].filter(Boolean).join('\n');
+    const value = `**${formatNumber(row.team.points)}** pts · ${progressBar(row.team.completion)} `
+      + `${formatPercentage(row.team.completion)} · ${formatGap(row.gap)}`;
 
     embed.addFields({ name, value });
   }

@@ -133,11 +133,24 @@ test('teams level on points are described as level', () => {
   assert.match(data.fields[1].value, /level/);
 });
 
-test('captains are listed, and omitted when absent', () => {
+test('the captain shares the title line with the team, saving a line each', () => {
   const { data } = buildEmbed(teams, config, FIXED_NOW, PREVIOUS);
-  assert.match(data.fields[0].value, /Captain: Cap2 & Co2/);
-  assert.match(data.fields[2].value, /Captain: Cap4/);
-  assert.ok(!data.fields[2].value.includes('&'), 'no dangling separator');
+  assert.match(data.fields[0].name, /Bravo - Cap2 & Co2/);
+  assert.ok(!data.fields[0].value.includes('Captain'), 'no separate captain line');
+  assert.equal(data.fields[0].value.split('\n').length, 1, 'the value is a single line');
+});
+
+test('a team with no co-captain leaves no dangling separator', () => {
+  const { data } = buildEmbed(teams, config, FIXED_NOW, PREVIOUS);
+  assert.match(data.fields[2].name, /Solo - Cap4/);
+  assert.ok(!data.fields[2].name.includes('&'));
+});
+
+test('a team with no captain at all shows just the team name', () => {
+  const nameless = [{ teamName: 'Ghost', captain: '', coCaptain: '', points: 5, completion: 0.1 }];
+  const { data } = buildEmbed(nameless, config, FIXED_NOW, {});
+  assert.ok(!data.fields[0].name.includes(' - '), data.fields[0].name);
+  assert.match(data.fields[0].name, /Ghost/);
 });
 
 test('field count is capped at maxTeams', () => {
