@@ -6,12 +6,13 @@ const { METRICS } = require('./gainers');
 /** Doubles as the identifier the poster matches this message on. */
 const GAINERS_TITLE = 'Top Gainers';
 
-/** RSNs are capped at 12 characters, so one long name cannot widen the table. */
-const MAX_NAME = 12;
-
-function truncate(text, max = MAX_NAME) {
-  const value = String(text ?? '');
-  return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
+/**
+ * Names are shown in full. Columns size themselves to the longest entry, so a
+ * long team name widens the table rather than being cut - team names carry
+ * meaning and an ellipsis makes them unreadable.
+ */
+function fullName(text) {
+  return String(text ?? '');
 }
 
 /** XP runs to millions, so abbreviate it; EHB and EHP stay at one decimal. */
@@ -52,8 +53,8 @@ function renderSections(gainers, metrics, limit) {
 
       const rows = ranked.map((row, index) => [
         `${index + 1}.`,
-        truncate(row[metric.key].player),
-        truncate(row.team, 10),
+        fullName(row[metric.key].player),
+        fullName(row.team),
         formatMetric(metric.key, row[metric.key].value),
       ]);
 
@@ -105,5 +106,5 @@ module.exports = {
   renderSections,
   rankFor,
   formatMetric,
-  truncate,
+  fullName,
 };

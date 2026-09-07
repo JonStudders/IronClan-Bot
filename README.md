@@ -78,13 +78,16 @@ columns align. Top 3 per category by default (`gainersRows`), or turn the whole
 message off with `gainers=off`.
 
     EHB gained
-    1. A Llama    Llama      12.4
-    2. Fetired    Fetired    11.1
-    3. Bamblebog  Bamblebog   9.6
+    1. FFA        Big Bald Cunts             73.2
+    2. J aybo     Boats and Hoes             68.5
+    3. IM AlbinP  Pot Arams Winning Gooners  66.2
 
     EHP gained
-    1. Llamaboy  Llama      9.8
+    1. IronLebanese  Zappers Aint Playin    66.9
     ...
+
+Names are shown in full: columns size themselves to the longest entry rather
+than truncating, since an abbreviated team name is unreadable.
 
 It carries no "Last Updated" line of its own, since the leaderboard sits
 directly above it and has one.

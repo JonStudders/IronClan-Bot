@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { loadConfig } = require('../src/config');
 const {
-  buildGainersEmbed, GAINERS_TITLE, rankFor, formatMetric, truncate,
+  buildGainersEmbed, GAINERS_TITLE, rankFor, formatMetric,
 } = require('../src/gainersEmbed');
 
 const config = loadConfig({ botToken: 't', sheetId: 's', discordChannelId: 'c' });
@@ -40,10 +40,25 @@ test('a missing value renders as a dash, not blank or NaN', () => {
   assert.equal(formatMetric('xp', undefined), '-');
 });
 
-test('long names are truncated so one name cannot widen the table', () => {
-  assert.equal(truncate('Short'), 'Short');
-  assert.equal(truncate('AnExtremelyLongTeamName').length, 12);
-  assert.ok(truncate('AnExtremelyLongTeamName').endsWith('…'));
+test('long team names are shown in full, never truncated', () => {
+  const long = [{
+    team: 'Pot Arams Winning Gooners',
+    ehb: { player: 'IM AlbinP', value: 66.2 },
+  }];
+  const block = codeBlock(buildGainersEmbed(long, withRows(3), FIXED_NOW));
+  assert.ok(block.includes('Pot Arams Winning Gooners'), block);
+  assert.ok(!block.includes('…'), 'no ellipsis anywhere');
+});
+
+test('columns still line up when names differ wildly in length', () => {
+  const mixed = [
+    { team: 'A', ehb: { player: 'X', value: 9 } },
+    { team: 'Pot Arams Winning Gooners', ehb: { player: 'IM AlbinP', value: 8 } },
+  ];
+  const rows = lines(buildGainersEmbed(mixed, withRows(3), FIXED_NOW)).slice(1);
+  assert.equal(rows[0].length, rows[1].length, 'padded rows should share a width');
+  assert.ok(rows[0].endsWith('9.0'), rows[0]);
+  assert.ok(rows[1].endsWith('8.0'), rows[1]);
 });
 
 // --- Ranking -----------------------------------------------------------------
@@ -105,9 +120,14 @@ test('there is no repeated column header row', () => {
   assert.ok(!codeBlock(embed).includes('Player'), 'the header row was dropped to save height');
 });
 
-test('stays narrow enough for any screen', () => {
-  const embed = buildGainersEmbed(gainers, config, FIXED_NOW);
-  assert.ok(widest(embed) <= 40, `expected <=40 chars, got ${widest(embed)}`);
+test('real-world team names stay narrow enough to avoid wrapping', () => {
+  const real = [
+    { team: 'Pot Arams Winning Gooners', ehb: { player: 'IM AlbinP', value: 66.2 }, xp: { player: 'IM AlbinP', value: 19_200_000 } },
+    { team: 'Euskadi Ta Askatasuna', ehb: { player: 'Neurron', value: 55.4 }, xp: { player: 'Misuli', value: 14_100_000 } },
+    { team: 'Zappers Aint Playin', ehb: { player: 'Ironborn PVM', value: 60.1 }, xp: { player: 'gmg', value: 15_200_000 } },
+  ];
+  const embed = buildGainersEmbed(real, withRows(3), FIXED_NOW);
+  assert.ok(widest(embed) <= 55, `expected <=55 chars, got ${widest(embed)}`);
 });
 
 test('height is bounded by the configured rows per metric', () => {
