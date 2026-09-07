@@ -127,3 +127,6 @@ dist
 .pnp.*
 
 google-auth.json
+# Bot runtime state (message ids, previous ranks, lead history)
+state.json
+state.json.tmp

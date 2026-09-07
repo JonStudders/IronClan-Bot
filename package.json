@@ -4,14 +4,17 @@
   "description": "A bot for the OldSchool Runescape Iron Clan discord server.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js",
+    "test": "node --test"
   },
   "author": "JonStudders",
   "license": "ISC",
   "dependencies": {
-    "async": "^3.2.5",
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5",
-    "public-google-sheets-parser": "^1.5.0"
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.4.2",
+    "public-google-sheets-parser": "^1.5.4"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
