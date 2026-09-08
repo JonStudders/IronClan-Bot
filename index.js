@@ -3,82 +3,24 @@
 // quiet: true suppresses the startup banner dotenv v17 prints by default.
 require('dotenv').config({ quiet: true });
 
-const { Client, GatewayIntentBits, Events } = require('discord.js');
+const { Events } = require('discord.js');
 
-const { loadConfig, validateConfig } = require('./src/config');
-const { createSheetReader, sortTeams } = require('./src/sheet');
-const { createGridReader } = require('./src/grid');
-const { parseGainers } = require('./src/gainers');
-const { buildEmbed } = require('./src/embed');
-const { buildGainersEmbed, GAINERS_TITLE } = require('./src/gainersEmbed');
-const { createStateStore } = require('./src/state');
-const { createPoster } = require('./src/poster');
+const { createBot } = require('./src/bot');
 const { createScheduler } = require('./src/scheduler');
 const { registerCommands, createInteractionHandler } = require('./src/commands');
 
-const config = validateConfig(loadConfig(process.env));
-
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-const state = createStateStore({ filePath: config.stateFile });
-
-const readTeams = createSheetReader(config);
-const readGrid = createGridReader(config);
-
 /**
- * Builds every message the bot maintains, in the order they should appear.
- * The leaderboard is first; the gainer panels follow.
+ * Long-running entry point: stays connected and updates on a timer.
  *
- * The gainer tables are read from the raw grid rather than the parsed sheet,
- * because they sit under blank headers that the row parser drops.
+ * Use this on a host that supports a persistent process. For a scheduled,
+ * one-shot run (GitHub Actions, cron) use `npm run update` instead, which does
+ * a single update and exits - see scripts/update-once.js.
  */
-async function render({ previousRanks, at }) {
-  const teams = await readTeams();
-
-  if (teams.length === 0) {
-    throw new Error('No teams found in the sheet - refusing to post an empty leaderboard.');
-  }
-
-  const panels = [{
-    key: 'board',
-    title: config.title,
-    embed: buildEmbed(teams, config, at, previousRanks),
-  }];
-
-  if (config.showGainers) {
-    // A failure here must not cost the leaderboard, which is the bot's job.
-    try {
-      const gainers = parseGainers(await readGrid());
-      panels.push({
-        key: 'gainers',
-        title: GAINERS_TITLE,
-        embed: buildGainersEmbed(gainers, config, at),
-      });
-    } catch (error) {
-      console.warn('Could not read top gainers, posting the leaderboard alone:', error.message);
-    }
-  }
-
-  return {
-    panels,
-    teams: sortTeams(teams).slice(0, config.maxTeams),
-    teamCount: teams.length,
-    unresolvedCount: teams.filter((team) => team.points === null).length,
-  };
-}
-
-const poster = createPoster({ client, config, render, state });
+const bot = createBot();
+const { config, client, state, poster } = bot;
 
 const scheduler = createScheduler({
-  task: async () => {
-    const { action, teamCount, unresolvedCount, panelCount, leadChanged, leader } = await poster.update();
-    console.log(`Leaderboard ${action} with ${teamCount} team(s) across ${panelCount} message(s).`);
-    if (leadChanged) {
-      console.log(`  Lead changed: ${leader} are now top.`);
-    }
-    if (unresolvedCount > 0) {
-      console.warn(`  ${unresolvedCount} team(s) had no readable points and were shown as zero.`);
-    }
-  },
+  task: async () => console.log(bot.describeUpdate(await poster.update())),
   intervalMinutes: config.updateIntervalMinutes,
   retryMinutes: config.retryIntervalMinutes,
   onError: (error) => console.error('Leaderboard update failed:', error),

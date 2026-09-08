@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "update": "node scripts/update-once.js",
+    "commands:clear": "node scripts/clear-commands.js",
     "test": "node --test"
   },
   "author": "JonStudders",

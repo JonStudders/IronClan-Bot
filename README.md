@@ -46,9 +46,10 @@ breakage is still visible.
 ## Setup
 
 ```
-npm install   # requires Node 18 or newer
+npm install            # requires Node 18 or newer
 cp .env.example .env   # then fill it in
-npm start
+npm run update         # one update, then exit  (what CI runs)
+npm start              # stay running and update on a timer
 ```
 
 ## Messages
@@ -165,9 +166,11 @@ cause and deletes nothing.
     src/gainers.js      Locates and joins the three top-gainer tables
     src/gainersEmbed.js Renders the top-gainers embed
     src/poster.js       Owns the bot's messages (post once, then edit)
+    src/bot.js          Assembles the parts, shared by both entry points
     src/scheduler.js    Repeating run loop with retry-on-failure backoff
     src/state.js        Persists message id, previous ranks and lead history
     src/commands.js     Slash commands (/bingo-lead, /bingo-clear)
+    scripts/            One-shot entry points (CI update, command cleanup)
     test/               Unit tests (`node --test`)
 
 ## Tests
@@ -179,6 +182,58 @@ npm test
 Runs on Node's built-in test runner, no extra dependencies. The Discord client
 and the sheet are injected into `poster`/`scheduler`, so the suite covers the
 real logic without network access or a bot token.
+
+## Deployment
+
+The bot runs as a **scheduled GitHub Actions job**: every 10 minutes a runner
+does one update and exits. There is no server to keep alive.
+
+This works because the bot does not need a persistent connection to do its job
+— reading the sheet and editing a message are both one-shot operations.
+
+### Setup
+
+Under **Settings → Secrets and variables → Actions**, add three repository
+secrets:
+
+| Secret | Value |
+| --- | --- |
+| `BOT_TOKEN` | The bot's Discord token |
+| `SHEET_ID` | The spreadsheet id from its URL |
+| `DISCORD_CHANNEL_ID` | The channel to post in |
+
+Everything else (title, end date, colour, interval) is non-secret and lives in
+plain sight in [.github/workflows/leaderboard.yml](.github/workflows/leaderboard.yml)
+— edit it there.
+
+Then run the workflow once by hand from the **Actions** tab (`Run workflow`) to
+confirm it works.
+
+### Things to know
+
+- **The schedule is best-effort.** GitHub does not guarantee cron punctuality
+  and delays of several minutes are normal under load. Treat `*/10` as "roughly
+  every ten minutes", not a guarantee.
+- **Scheduled workflows are disabled after 60 days without repo activity.**
+  Any push re-enables them.
+- **Rank arrows depend on the Actions cache.** The runner is wiped between
+  jobs, so `state.json` is cached under a rolling key. If the cache is evicted
+  the next board simply shows `NEW` against every team for one update.
+- **Slash commands do not work in this mode.** `/bingo-lead` and
+  `/bingo-clear` need something listening on Discord's gateway, and nothing is
+  online between runs. Clear them once with `npm run commands:clear` so they
+  stop appearing in Discord and failing.
+
+### Running it as a persistent process instead
+
+If you later move to a host that supports a long-running process (Railway,
+Fly.io, a VPS), `npm start` is unchanged and restores everything, slash
+commands included. Both entry points share the same wiring in `src/bot.js`, so
+neither can drift from the other.
+
+**Vercel cannot host this.** Vercel runs serverless functions that must return
+and exit; `npm start` deliberately stays alive, so a deploy hangs until it
+times out. That is a mismatch of models, not a configuration problem.
 
 ## Configuration
 

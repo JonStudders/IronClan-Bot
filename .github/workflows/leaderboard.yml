@@ -1,0 +1,71 @@
+name: Update leaderboard
+
+on:
+  schedule:
+    # Every 10 minutes. GitHub runs scheduled workflows on a best-effort basis,
+    # so the real gap is often longer than this under load - see the README.
+    - cron: '*/10 * * * *'
+  # Lets you trigger a run by hand from the Actions tab.
+  workflow_dispatch:
+
+# Never let two updates run at once: they would both try to edit the same
+# messages and could each decide the other's post was a leftover.
+concurrency:
+  group: leaderboard
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # state.json carries the previous ranking (for the rank arrows) and the
+      # lead history. The runner is wiped between jobs, so it is cached under a
+      # rolling key: each run restores the newest previous cache and saves its
+      # own. Losing it costs one update's worth of arrows, never a crash.
+      - name: Restore bot state
+        uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: bot-state-${{ github.run_id }}
+          restore-keys: bot-state-
+
+      - name: Update the leaderboard
+        run: npm run update
+        env:
+          # Secrets - set these under Settings > Secrets and variables > Actions
+          botToken: ${{ secrets.BOT_TOKEN }}
+          sheetId: ${{ secrets.SHEET_ID }}
+          discordChannelId: ${{ secrets.DISCORD_CHANNEL_ID }}
+
+          # Per-event settings. These are not secret, so they live here where
+          # you can edit them directly.
+          sheetName: Leaderboard
+          bingoTitle: Iron Clan Bingo - Autumn 2026
+          leaderboardUrl: https://bit.ly/4osZatV
+          bingoEndTimestamp: '1790539200'
+          thumbnailUrl: https://i.imgur.com/i59D7Uy.png
+          embedColour: '#6B8E23'
+          credit: BlancoIron
+          updateIntervalMinutes: '10'
+          gainers: 'on'
+          gainersRows: '3'
+
+      # if: always() so a failed update still preserves the previous state
+      # rather than dropping the cache entry entirely.
+      - name: Save bot state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state.json
+          key: bot-state-${{ github.run_id }}
