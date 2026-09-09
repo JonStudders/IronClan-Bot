@@ -76,8 +76,8 @@ function createBot(env = process.env, { log = console } = {}) {
     const lines = [
       `Leaderboard ${result.action} with ${result.teamCount} team(s) across ${result.panelCount} message(s).`,
     ];
-    if (result.removedLeftovers > 0) {
-      lines.push(`  Removed ${result.removedLeftovers} leftover message(s).`);
+    if (result.removedPrevious > 0) {
+      lines.push(`  Removed ${result.removedPrevious} previous message(s).`);
     }
     if (result.leadChanged) {
       lines.push(`  Lead changed: ${result.leader} are now top.`);

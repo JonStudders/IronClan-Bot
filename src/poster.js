@@ -2,22 +2,19 @@
 
 const { applyStandings } = require('./state');
 
-/** How far back to look for our own messages after a restart. */
+/** How far back to look for our own messages. */
 const HISTORY_SCAN_LIMIT = 25;
 
 /**
- * Owns the bot's messages in the channel and keeps them together at the
- * bottom, in order.
+ * Owns the bot's messages in the channel.
  *
- * A "panel" is one message the bot maintains, identified by its embed title.
- * While the panels are undisturbed they are edited in place, which Discord
- * does not notify for. If anything is posted below them, or they have drifted
- * out of order, they are deleted and reposted underneath.
+ * A "panel" is one message the bot maintains. On every update the bot deletes
+ * the messages it posted last time and posts fresh ones, so the board is
+ * always the newest thing in the channel regardless of what has been said in
+ * between. That does notify the channel on every update - the trade for never
+ * being stranded up the scrollback.
  *
  * Only messages this bot authored are ever deleted; see `deleteOwnMessage`.
- * Any embed message of ours whose title matches no current panel is a leftover
- * from a retired panel and is removed, so the channel converges on exactly the
- * configured set.
  */
 function createPoster({ client, config, render, state, now = () => Date.now(), log = console }) {
   /** True only for messages this bot wrote. The guard on every delete. */
@@ -37,43 +34,6 @@ function createPoster({ client, config, render, state, now = () => Date.now(), l
     return isOwnMessage(message) && (message.embeds?.length ?? 0) > 0;
   }
 
-  function titleOf(message) {
-    return message.embeds?.[0]?.title ?? '';
-  }
-
-  /**
-   * Matches existing messages to panels by embed title. Returns the message
-   * per panel plus everything of ours that no panel claims.
-   */
-  function matchPanels(recent, panels) {
-    const ours = [...recent.values()].filter(isBoard);
-    const claimed = new Set();
-    const matched = new Map();
-
-    for (const panel of panels) {
-      const found = ours.find((message) => !claimed.has(message.id) && titleOf(message) === panel.title);
-      if (found) {
-        claimed.add(found.id);
-        matched.set(panel.key, found);
-      }
-    }
-
-    const leftovers = ours.filter((message) => !claimed.has(message.id));
-    return { matched, leftovers };
-  }
-
-  /**
-   * True when our panels are the last messages in the channel and appear in
-   * the configured order.
-   */
-  function panelsAreInPlace(recent, panels, matched) {
-    if (matched.size !== panels.length) return false;
-    const expected = panels.map((panel) => matched.get(panel.key).id);
-    // recent is newest first, so the tail of the channel reversed is our order.
-    const newest = [...recent.values()].slice(0, panels.length).map((message) => message.id).reverse();
-    return newest.length === expected.length && newest.every((id, i) => id === expected[i]);
-  }
-
   async function update() {
     const saved = state.read();
     const at = now();
@@ -88,48 +48,34 @@ function createPoster({ client, config, render, state, now = () => Date.now(), l
 
     const channel = await client.channels.fetch(config.channelId);
     const recent = await channel.messages.fetch({ limit: HISTORY_SCAN_LIMIT });
-    const { matched, leftovers } = matchPanels(recent, panels);
 
-    // Retired panels and duplicates would otherwise sit in the channel forever.
-    for (const stale of leftovers) {
-      await deleteOwnMessage(stale);
-    }
-    if (leftovers.length > 0) {
-      log.log?.(`Removed ${leftovers.length} leftover message(s).`);
+    // Clear out everything we posted before. This covers the previous update's
+    // panels, anything left by a retired panel, and any duplicate a crashed
+    // run left behind - so the channel converges on exactly one set.
+    const ours = [...recent.values()].filter(isBoard);
+    for (const message of ours) {
+      await deleteOwnMessage(message);
     }
 
-    let action;
-    if (panelsAreInPlace(recent, panels, matched)) {
-      for (const panel of panels) {
-        await matched.get(panel.key).edit({ embeds: [panel.embed] });
-      }
-      action = 'edited';
-    } else {
-      const had = matched.size > 0;
-      for (const message of matched.values()) {
-        await deleteOwnMessage(message);
-      }
-      for (const panel of panels) {
-        await channel.send({ embeds: [panel.embed] });
-      }
-      action = had ? 'reposted' : 'posted';
+    for (const panel of panels) {
+      await channel.send({ embeds: [panel.embed] });
     }
 
     const { next, leadChanged } = applyStandings(saved, teams, new Date(at).toISOString());
     state.write({ ...next, panelCount: panels.length });
 
     return {
-      action,
+      action: ours.length > 0 ? 'reposted' : 'posted',
       teamCount,
       unresolvedCount,
       panelCount: panels.length,
-      removedLeftovers: leftovers.length,
+      removedPrevious: ours.length,
       leadChanged,
       leader: next.leader?.teamName ?? null,
     };
   }
 
-  return { update, isOwnMessage, isBoard, titleOf };
+  return { update, isOwnMessage, isBoard };
 }
 
 module.exports = { createPoster, HISTORY_SCAN_LIMIT };

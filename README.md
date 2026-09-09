@@ -127,27 +127,28 @@ missing or corrupt file falls back to empty state.
 
 ## Message behaviour
 
-Each message the bot maintains is a "panel", identified by its embed title. The
-panels are kept together at the bottom of the channel, in order. Any embed
-message of the bot's whose title matches no current panel is a leftover — from
-a retired panel, or a crash mid-repost — and is deleted, so the channel
-converges on exactly the configured set.
+On every update the bot deletes the messages it posted last time and posts
+fresh ones. The board is therefore always the newest thing in the channel, no
+matter what has been said in between.
 
-- **Undisturbed** - the message is edited in place. Discord does not notify the
-  channel for an edit, so updates are silent.
-- **Someone posted below it** - the board would be stranded up the scrollback,
-  so the bot deletes its own message and posts a fresh one underneath. This
-  does notify the channel.
+The trade-off is that **every update notifies the channel**. Mute the channel
+if that is noisy. (Editing in place is silent, but leaves the board stranded up
+the scrollback as soon as anyone posts below it.)
+
+Clearing out the previous messages also cleans up after a retired panel or a
+crashed run, so the channel converges on exactly one set.
+
 The bot only ever deletes messages it authored itself; `deleteOwnMessage`
-throws rather than touching anyone else's post.
+throws rather than touching anyone else's post. A message of the bot's without
+an embed is not treated as a panel and is left alone.
 
 ### Permissions
 
 | Permission | Needed for |
 | --- | --- |
 | View Channel / Send Messages | Posting the board |
-| Read Message History | Finding its own board after a restart, and noticing posts below it |
-| Manage Messages | `/bingo-clear` only - deleting other people's messages |
+| Read Message History | Finding the messages it posted last time, so they can be removed |
+| Manage Messages | Not needed for the board - deleting its own messages requires no extra permission |
 
 Deleting its *own* board needs no special permission, so the leaderboard works
 without Manage Messages. If the server requires two-factor authentication for

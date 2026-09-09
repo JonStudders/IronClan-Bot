@@ -8,11 +8,31 @@ on:
   # Lets you trigger a run by hand from the Actions tab.
   workflow_dispatch:
 
-# Never let two updates run at once: they would both try to edit the same
-# messages and could each decide the other's post was a leftover.
+# Never let two updates run at once: they would both delete and repost the same
+# messages, and could each remove the other's fresh post.
 concurrency:
   group: leaderboard
   cancel-in-progress: false
+
+env:
+  # Secrets, accepting either naming style so it works whether they were named
+  # BOT_TOKEN or botToken. GitHub secret names are case-insensitive, but an
+  # underscore is a different name, so both spellings are tried.
+  botToken: ${{ secrets.BOT_TOKEN || secrets.BOTTOKEN }}
+  sheetId: ${{ secrets.SHEET_ID || secrets.SHEETID }}
+  discordChannelId: ${{ secrets.DISCORD_CHANNEL_ID || secrets.DISCORDCHANNELID }}
+
+  # Per-event settings. Not secret, so they live here where you can edit them.
+  sheetName: Leaderboard
+  bingoTitle: Iron Clan Bingo - Autumn 2026
+  leaderboardUrl: https://bit.ly/4osZatV
+  bingoEndTimestamp: '1790539200'
+  thumbnailUrl: https://i.imgur.com/i59D7Uy.png
+  embedColour: '#6B8E23'
+  credit: BlancoIron
+  updateIntervalMinutes: '10'
+  gainers: 'on'
+  gainersRows: '3'
 
 jobs:
   update:
@@ -29,6 +49,32 @@ jobs:
 
       - run: npm ci
 
+      # Fail with a message that says which secret is missing, rather than
+      # letting the app report three empty variables with no clue why.
+      - name: Check the required secrets are set
+        run: |
+          missing=""
+          if [ -z "$botToken" ]; then missing="$missing BOT_TOKEN"; fi
+          if [ -z "$sheetId" ]; then missing="$missing SHEET_ID"; fi
+          if [ -z "$discordChannelId" ]; then missing="$missing DISCORD_CHANNEL_ID"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing"
+            echo ""
+            echo "Add them under: Settings > Secrets and variables > Actions"
+            echo "  > the 'Secrets' tab > 'New repository secret'."
+            echo ""
+            echo "Names must match exactly (underscores included):"
+            echo "  BOT_TOKEN            the bot's Discord token"
+            echo "  SHEET_ID             the spreadsheet id from its URL"
+            echo "  DISCORD_CHANNEL_ID   the channel to post in"
+            echo ""
+            echo "Common causes: added under 'Variables' instead of 'Secrets',"
+            echo "added as an Environment secret rather than a repository one,"
+            echo "or named without the underscores."
+            exit 1
+          fi
+          echo "All three secrets are present."
+
       # state.json carries the previous ranking (for the rank arrows) and the
       # lead history. The runner is wiped between jobs, so it is cached under a
       # rolling key: each run restores the newest previous cache and saves its
@@ -42,29 +88,12 @@ jobs:
 
       - name: Update the leaderboard
         run: npm run update
-        env:
-          # Secrets - set these under Settings > Secrets and variables > Actions
-          botToken: ${{ secrets.BOT_TOKEN }}
-          sheetId: ${{ secrets.SHEET_ID }}
-          discordChannelId: ${{ secrets.DISCORD_CHANNEL_ID }}
 
-          # Per-event settings. These are not secret, so they live here where
-          # you can edit them directly.
-          sheetName: Leaderboard
-          bingoTitle: Iron Clan Bingo - Autumn 2026
-          leaderboardUrl: https://bit.ly/4osZatV
-          bingoEndTimestamp: '1790539200'
-          thumbnailUrl: https://i.imgur.com/i59D7Uy.png
-          embedColour: '#6B8E23'
-          credit: BlancoIron
-          updateIntervalMinutes: '10'
-          gainers: 'on'
-          gainersRows: '3'
-
-      # if: always() so a failed update still preserves the previous state
-      # rather than dropping the cache entry entirely.
+      # if: always() so a failed update still preserves the previous state.
+      # hashFiles is empty when the file is absent, which skips the save rather
+      # than logging a path-validation warning.
       - name: Save bot state
-        if: always()
+        if: always() && hashFiles('state.json') != ''
         uses: actions/cache/save@v4
         with:
           path: state.json

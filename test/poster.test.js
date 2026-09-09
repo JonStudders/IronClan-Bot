@@ -26,7 +26,7 @@ function makeState(initial = {}) {
   };
 }
 
-/** A fake embed carrying just the title the poster matches on. */
+/** A fake embed carrying just the title, which is all the fakes need. */
 const embedFor = (title) => ({ data: { title }, title });
 
 function makeMessage({ author = 'BOT', title = null, calls } = {}) {
@@ -37,11 +37,7 @@ function makeMessage({ author = 'BOT', title = null, calls } = {}) {
     embeds: title === null ? [] : [{ title }],
     deleted: false,
     calls,
-    edit: async ({ embeds }) => {
-      if (msg.calls) msg.calls.edits.push(embeds[0].title);
-      msg.embeds = [{ title: embeds[0].title }];
-      return msg;
-    },
+    edit: async () => { throw new Error('edit() should never be called: panels are reposted'); },
     delete: async () => {
       if (msg.calls) msg.calls.deletes.push(msg.id);
       msg.deleted = true;
@@ -53,7 +49,7 @@ function makeMessage({ author = 'BOT', title = null, calls } = {}) {
 
 /** Channel whose history is newest-first, matching Discord. */
 function makeChannel(history = []) {
-  const calls = { sends: [], edits: [], deletes: [] };
+  const calls = { sends: [], deletes: [] };
   let messages = [...history];
   for (const m of messages) m.calls = calls;
 
@@ -88,7 +84,6 @@ function makeChannel(history = []) {
 
 const clientFor = (channel) => ({ user: { id: 'BOT' }, channels: { fetch: async () => channel } });
 
-/** Panels are identified by embed title, so the fakes only need titles. */
 function renderFor(titles, teams = TEAMS) {
   // index.js hands the poster teams already sorted, so the fake must too.
   const sorted = [...teams].sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
@@ -117,84 +112,43 @@ test('posts one message per panel, in order', async () => {
   assert.equal(result.action, 'posted');
   assert.equal(result.panelCount, 2);
   assert.deepEqual(channel.calls.sends, ['Board', 'Gainers']);
+  assert.deepEqual(channel.calls.deletes, [], 'nothing to remove on a first run');
 });
 
-test('subsequent updates edit every panel in place', async () => {
+test('every later update deletes the previous messages and reposts', async () => {
   const channel = makeChannel();
   const { poster } = posterFor(channel);
 
   assert.equal((await poster.update()).action, 'posted');
-  assert.equal((await poster.update()).action, 'edited');
+  const second = await poster.update();
 
-  assert.equal(channel.calls.sends.length, 2, 'nothing should be sent twice');
-  assert.deepEqual(channel.calls.edits, ['Board', 'Gainers']);
-  assert.deepEqual(channel.calls.deletes, []);
-});
-
-test('panels are matched to messages by embed title', async () => {
-  const channel = makeChannel();
-  channel.addOurMessage('Gainers');
-  channel.addOurMessage('Board');
-  // Channel order is now [Board, Gainers] newest-first, i.e. the wrong way up.
-  const { poster } = posterFor(channel);
-
-  const result = await poster.update();
-  assert.equal(result.action, 'reposted', 'out-of-order panels should be reposted');
-  assert.deepEqual(channel.calls.sends, ['Board', 'Gainers']);
-});
-
-test('adopts existing panels after a restart when they are in order', async () => {
-  const channel = makeChannel();
-  channel.addOurMessage('Board');
-  channel.addOurMessage('Gainers');
-  const { poster } = posterFor(channel);
-
-  assert.equal((await poster.update()).action, 'edited');
-  assert.deepEqual(channel.calls.sends, []);
-});
-
-// --- Leftovers ---------------------------------------------------------------
-
-test('a message from a retired panel is removed', async () => {
-  const channel = makeChannel();
-  channel.addOurMessage('Board');
-  channel.addOurMessage('Gainers');
-  const retired = channel.addOurMessage('Top Gainers - stacked');
-
-  const { poster } = posterFor(channel);
-  const result = await poster.update();
-
-  assert.equal(result.removedLeftovers, 1);
-  assert.equal(retired.deleted, true);
-  assert.equal(channel.history.filter((m) => m.author.id === 'BOT').length, 2);
-});
-
-test('duplicate panels converge to one each', async () => {
-  const channel = makeChannel();
-  for (let i = 0; i < 3; i++) channel.addOurMessage('Board');
-  const { poster } = posterFor(channel, { titles: ['Board'] });
-
-  await poster.update();
-  assert.equal(channel.history.filter((m) => m.author.id === 'BOT').length, 1);
-});
-
-// --- Staying at the bottom ---------------------------------------------------
-
-test('reposts every panel when someone posts underneath', async () => {
-  const channel = makeChannel();
-  const { poster } = posterFor(channel);
-  await poster.update();
-
-  const ownerPost = channel.postFromSomeoneElse();
-  const result = await poster.update();
-
-  assert.equal(result.action, 'reposted');
-  assert.equal(channel.calls.deletes.length, 2, 'both panels removed');
+  assert.equal(second.action, 'reposted');
+  assert.equal(second.removedPrevious, 2);
+  assert.equal(channel.calls.deletes.length, 2);
   assert.deepEqual(channel.calls.sends, ['Board', 'Gainers', 'Board', 'Gainers']);
-  assert.equal(ownerPost.deleted, false, 'the owner message must survive');
 });
 
-test('after a repost the panels are the newest messages, in order', async () => {
+test('messages are never edited', async () => {
+  // makeMessage throws from edit(), so this fails loudly if editing returns.
+  const channel = makeChannel();
+  const { poster } = posterFor(channel);
+  await poster.update();
+  await poster.update();
+  await poster.update();
+});
+
+test('only one set of panels is ever left in the channel', async () => {
+  const channel = makeChannel();
+  const { poster } = posterFor(channel);
+
+  for (let i = 0; i < 4; i++) await poster.update();
+
+  const ours = channel.history.filter((m) => m.author.id === 'BOT');
+  assert.equal(ours.length, 2);
+  assert.deepEqual(ours.map((m) => m.embeds[0].title).reverse(), ['Board', 'Gainers']);
+});
+
+test('the panels end up as the newest messages, in order', async () => {
   const channel = makeChannel();
   const { poster } = posterFor(channel);
   await poster.update();
@@ -205,12 +159,25 @@ test('after a repost the panels are the newest messages, in order', async () => 
   assert.deepEqual(bottomUp, ['Board', 'Gainers']);
 });
 
+test('a message posted by someone else is left in place', async () => {
+  const channel = makeChannel();
+  const { poster } = posterFor(channel);
+  await poster.update();
+
+  const ownerPost = channel.postFromSomeoneElse();
+  await poster.update();
+
+  assert.equal(ownerPost.deleted, false, 'the owner message must survive');
+  assert.ok(!channel.calls.deletes.includes(ownerPost.id));
+});
+
 test('never deletes a message authored by someone else', async () => {
   const channel = makeChannel();
   const theirs = channel.postFromSomeoneElse();
   const { poster } = posterFor(channel);
 
-  await poster.update();
+  const result = await poster.update();
+  assert.equal(result.action, 'posted');
   assert.deepEqual(channel.calls.deletes, []);
   assert.equal(theirs.deleted, false);
 });
@@ -220,8 +187,30 @@ test('a message of ours without an embed is left alone', async () => {
   const { poster } = posterFor(channel);
 
   const result = await poster.update();
-  assert.equal(result.removedLeftovers, 0, 'plain messages are not panels');
+  assert.equal(result.removedPrevious, 0, 'plain messages are not panels');
   assert.deepEqual(channel.calls.deletes, []);
+});
+
+test('messages from a retired panel are cleared out too', async () => {
+  const channel = makeChannel();
+  channel.addOurMessage('Board');
+  const retired = channel.addOurMessage('Top Gainers - stacked');
+
+  const { poster } = posterFor(channel);
+  const result = await poster.update();
+
+  assert.equal(result.removedPrevious, 2);
+  assert.equal(retired.deleted, true);
+  assert.equal(channel.history.filter((m) => m.author.id === 'BOT').length, 2);
+});
+
+test('duplicates left by a crashed run are cleared', async () => {
+  const channel = makeChannel();
+  for (let i = 0; i < 5; i++) channel.addOurMessage('Board');
+  const { poster } = posterFor(channel, { titles: ['Board'] });
+
+  await poster.update();
+  assert.equal(channel.history.filter((m) => m.author.id === 'BOT').length, 1);
 });
 
 // --- State -------------------------------------------------------------------
@@ -276,8 +265,9 @@ test('a render with no panels is refused', async () => {
   await assert.rejects(() => poster.update(), /no panels are enabled/);
 });
 
-test('render errors propagate so the scheduler can retry', async () => {
+test('render errors propagate before anything is deleted', async () => {
   const channel = makeChannel();
+  channel.addOurMessage('Board');
   const poster = createPoster({
     client: clientFor(channel),
     config,
@@ -285,11 +275,13 @@ test('render errors propagate so the scheduler can retry', async () => {
     state: makeState(),
     log: SILENT,
   });
+
   await assert.rejects(() => poster.update(), /sheet is down/);
+  assert.deepEqual(channel.calls.deletes, [], 'the old board must survive a failed render');
   assert.deepEqual(channel.calls.sends, []);
 });
 
-test('discord errors propagate so the scheduler can retry', async () => {
+test('discord errors propagate so the run fails', async () => {
   const client = { user: { id: 'BOT' }, channels: { fetch: async () => { throw new Error('unreachable'); } } };
   const poster = createPoster({
     client, config, render: renderFor(['Board']), state: makeState(), log: SILENT,
