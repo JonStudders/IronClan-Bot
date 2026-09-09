@@ -56,8 +56,13 @@ test('carries the title, colour and credit', () => {
   const { data } = buildEmbed(teams, config, FIXED_NOW, PREVIOUS);
   assert.equal(data.title, 'Iron Clan - Test Bingo');
   assert.equal(data.color, 0x6B8E23);
-  assert.match(data.footer.text, /Made by: BlancoIron/);
-  assert.match(data.footer.text, /every 10 minutes/);
+  assert.equal(data.footer.text, 'Made by: BlancoIron');
+});
+
+test('the footer is only the credit, with no update interval', () => {
+  const { data } = buildEmbed(teams, config, FIXED_NOW, PREVIOUS);
+  assert.ok(!data.footer.text.includes('minutes'), data.footer.text);
+  assert.equal(data.footer.text.split('\n').length, 1, 'a single footer line');
 });
 
 test('the footer no longer advertises a layout', () => {

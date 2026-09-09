@@ -148,12 +148,9 @@ test('height is bounded by the configured rows per metric', () => {
   assert.equal(lines(buildGainersEmbed(many, withRows(3), FIXED_NOW)).length, 14);
 });
 
-test('the footer states the cut-off and the one-per-team caveat', () => {
+test('has no footer: the leaderboard above already carries one', () => {
   const embed = buildGainersEmbed(gainers, withRows(3), FIXED_NOW);
-  assert.match(embed.data.footer.text, /Top 3 per category/);
-  // The sheet only supplies each team's own best player, so the pool is
-  // one entry per team rather than every player in the clan.
-  assert.match(embed.data.footer.text, /one entry per team/);
+  assert.equal(embed.data.footer, undefined);
 });
 
 test('players are listed best first with a rank number', () => {

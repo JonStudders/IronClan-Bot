@@ -89,15 +89,12 @@ function buildGainersEmbed(gainers, config) {
     ? 'No gainer data in the sheet yet.'
     : ['```', sections, '```'].join('\n');
 
-  const footer = `Top ${config.gainersRows} per category · one entry per team`
-    + ` · updates every ${config.updateIntervalMinutes} minutes`;
-
   return new EmbedBuilder()
     .setColor(config.embedColour)
     .setTitle(GAINERS_TITLE)
-    // No "Last Updated" line: the leaderboard sits directly above and has one.
-    .setDescription(body)
-    .setFooter({ text: footer });
+    // No timestamp and no footer: the leaderboard sits directly above and
+    // carries both, so repeating them here is just noise.
+    .setDescription(body);
 }
 
 module.exports = {

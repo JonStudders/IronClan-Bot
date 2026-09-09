@@ -61,10 +61,7 @@ function buildEmbed(teams, config, now = Date.now(), previousRanks = {}) {
     .setColor(config.embedColour)
     .setTitle(config.title)
     .setDescription(buildDescription(config, now))
-    .setFooter({
-      text: `Leaderboard updates every ${config.updateIntervalMinutes} minutes`
-        + `\nMade by: ${config.credit}`,
-    });
+    .setFooter({ text: `Made by: ${config.credit}` });
 
   if (config.thumbnailUrl) {
     embed.setThumbnail(config.thumbnailUrl);
