@@ -175,7 +175,9 @@ cause and deletes nothing.
     src/scheduler.js    Repeating run loop with retry-on-failure backoff
     src/state.js        Persists message id, previous ranks and lead history
     src/commands.js     Slash commands (/bingo-lead, /bingo-clear)
-    scripts/            One-shot entry points (CI update, command cleanup)
+    scripts/            One-shot entry points (manual update, command cleanup)
+    deploy/             systemd unit and server bootstrap script
+    docs/               Deployment guide and the open code-review findings
     test/               Unit tests (`node --test`)
 
 ## Tests
@@ -190,55 +192,46 @@ real logic without network access or a bot token.
 
 ## Deployment
 
-The bot runs as a **scheduled GitHub Actions job**: every 10 minutes a runner
-does one update and exits. There is no server to keep alive.
+The bot runs as a **persistent systemd service on an Oracle Cloud Always Free
+VM**, redeployed by GitHub Actions on every push to `main`.
 
-This works because the bot does not need a persistent connection to do its job
-— reading the sheet and editing a message are both one-shot operations.
+Full instructions — server, repo and Actions — are in
+**[docs/deployment-oracle.md](docs/deployment-oracle.md)**.
 
-### Setup
+The short version:
 
-Under **Settings → Secrets and variables → Actions**, add three repository
-secrets:
+    # on the server, once
+    curl -fsSL https://raw.githubusercontent.com/JonStudders/IronClan-Bot/main/deploy/bootstrap.sh | bash
+    nano /opt/ironclan-bot/.env      # fill in botToken, sheetId, discordChannelId
+    sudo systemctl start ironclan-bot
 
-| Secret | Value |
-| --- | --- |
-| `BOT_TOKEN` | The bot's Discord token |
-| `SHEET_ID` | The spreadsheet id from its URL |
-| `DISCORD_CHANNEL_ID` | The channel to post in |
+Then add four repository secrets — `DEPLOY_HOST`, `DEPLOY_USER`,
+`DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` — and every push to `main` runs the
+tests and, if they pass, redeploys.
 
-Everything else (title, end date, colour, interval) is non-secret and lives in
-plain sight in [.github/workflows/leaderboard.yml](.github/workflows/leaderboard.yml)
-— edit it there.
+The bot makes only **outbound** connections, so no inbound port beyond SSH
+needs opening.
 
-Then run the workflow once by hand from the **Actions** tab (`Run workflow`) to
-confirm it works.
+### Why persistent rather than scheduled
 
-### Things to know
+It previously ran as a scheduled GitHub Actions job. Running continuously is
+better on three counts: the update timer is punctual rather than best-effort,
+`state.json` lives on disk so rank arrows are reliable, and **slash commands
+work**, since they need a live gateway connection.
 
-- **The schedule is best-effort.** GitHub does not guarantee cron punctuality
-  and delays of several minutes are normal under load. Treat `*/10` as "roughly
-  every ten minutes", not a guarantee.
-- **Scheduled workflows are disabled after 60 days without repo activity.**
-  Any push re-enables them.
-- **Rank arrows depend on the Actions cache.** The runner is wiped between
-  jobs, so `state.json` is cached under a rolling key. If the cache is evicted
-  the next board simply shows `NEW` against every team for one update.
-- **Slash commands do not work in this mode.** `/bingo-lead` and
-  `/bingo-clear` need something listening on Discord's gateway, and nothing is
-  online between runs. Clear them once with `npm run commands:clear` so they
-  stop appearing in Discord and failing.
-
-### Running it as a persistent process instead
-
-If you later move to a host that supports a long-running process (Railway,
-Fly.io, a VPS), `npm start` is unchanged and restores everything, slash
-commands included. Both entry points share the same wiring in `src/bot.js`, so
-neither can drift from the other.
+`.github/workflows/leaderboard.yml` is kept as a **manual** fallback for when
+the server is down. Its schedule is removed deliberately — with the service
+running its own timer, a scheduled job would fight it for the same messages.
 
 **Vercel cannot host this.** Vercel runs serverless functions that must return
 and exit; `npm start` deliberately stays alive, so a deploy hangs until it
 times out. That is a mismatch of models, not a configuration problem.
+
+## Known issues
+
+Open findings from a full review live in
+**[docs/code-review.md](docs/code-review.md)** — most notably that points will
+be misread if the sheet ever formats them with a thousands separator.
 
 ## Configuration
 

@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# One deploy at a time, and never cancel one part-way: a half-finished deploy
+# would leave the server on a mixed checkout.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  deploy:
+    name: Deploy to Oracle
+    # Only from main, only after the tests pass, and not for pull requests
+    # (a fork PR must never be able to reach the server).
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check the deploy secrets are set
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          missing=""
+          if [ -z "$DEPLOY_HOST" ]; then missing="$missing DEPLOY_HOST"; fi
+          if [ -z "$DEPLOY_USER" ]; then missing="$missing DEPLOY_USER"; fi
+          if [ -z "$DEPLOY_SSH_KEY" ]; then missing="$missing DEPLOY_SSH_KEY"; fi
+          if [ -z "$DEPLOY_KNOWN_HOSTS" ]; then missing="$missing DEPLOY_KNOWN_HOSTS"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing"
+            echo "See docs/deployment-oracle.md for how to produce each value."
+            exit 1
+          fi
+          echo "All deploy secrets are present."
+
+      - name: Deploy over SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Pinned host key: without this, ssh would either refuse or accept
+          # whatever answers, which is the same as no host verification.
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/deploy_key \
+              -o IdentitiesOnly=yes \
+              -o ConnectTimeout=15 \
+              "${DEPLOY_USER}@${DEPLOY_HOST}" \
+              'bash -euo pipefail -s' <<'REMOTE'
+            cd /opt/ironclan-bot
+
+            echo "--- Updating to origin/main ---"
+            git fetch --prune origin main
+            # reset --hard, never `git clean`: state.json is untracked and must
+            # survive the deploy or every board loses its rank arrows.
+            git reset --hard origin/main
+            git --no-pager log -1 --oneline
+
+            echo "--- Installing dependencies ---"
+            npm ci --omit=dev
+
+            echo "--- Restarting ---"
+            sudo systemctl restart ironclan-bot
+          REMOTE
+
+      - name: Verify the service came up
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          # Give it a moment to connect to Discord and post before judging it.
+          sleep 20
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
+              "${DEPLOY_USER}@${DEPLOY_HOST}" 'bash -euo pipefail -s' <<'REMOTE'
+            if ! systemctl is-active --quiet ironclan-bot; then
+              echo "::error::ironclan-bot is not running after the deploy."
+              sudo systemctl status ironclan-bot --no-pager || true
+              journalctl -u ironclan-bot -n 50 --no-pager || true
+              exit 1
+            fi
+            echo "--- Recent log ---"
+            journalctl -u ironclan-bot -n 20 --no-pager
+          REMOTE
+
+      - name: Remove the deploy key from the runner
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

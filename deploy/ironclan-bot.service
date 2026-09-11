@@ -1,0 +1,48 @@
+[Unit]
+Description=Iron Clan bingo leaderboard bot
+Documentation=https://github.com/JonStudders/IronClan-Bot
+# The bot opens a gateway connection at startup, so wait for real networking
+# rather than just for the interface to exist.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ironclan
+Group=ironclan
+WorkingDirectory=/opt/ironclan-bot
+
+# Configuration comes from /opt/ironclan-bot/.env, which index.js loads with
+# dotenv. Deliberately not systemd's EnvironmentFile: dotenv is what runs
+# locally too, so there is one parser and one set of quoting rules.
+ExecStart=/usr/bin/node index.js
+
+# Discord connections drop; the bot should always come back.
+Restart=always
+RestartSec=10s
+# ...but if it crashes on startup five times in a minute, stop and stay stopped
+# rather than hammering Discord's API.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ironclan-bot
+
+# Hardening. The bot needs outbound HTTPS and one writable directory (for
+# state.json); nothing else.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/opt/ironclan-bot
+
+[Install]
+WantedBy=multi-user.target
