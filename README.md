@@ -131,7 +131,12 @@ ignored in silence, so the commands are not advertised.
     -post <text>    Post text to the leaderboard channel
     -freeze         Stop the timer updating the board
     -unfreeze       Resume automatic updates
+    -line-test [p]  Points chart as a PNG, DMed back (p: 24h, 7d, blank=all)
     -help           List the commands
+
+`-line-test` renders the points history as a line chart and DMs the image back
+rather than posting it, so the rendering can be iterated on without the channel
+seeing every attempt. It is the prototype for a public `/bingo-history-line`.
 
 `-freeze` stops the *timer*, not you: `-reload` still updates while frozen.
 The freeze is written to the state file, so a deploy or a reboot cannot
@@ -235,6 +240,8 @@ cause and deletes nothing.
     src/commands.js     Slash commands (/bingo-lead, /bingo-clear)
     src/dmCommands.js   Developer commands sent to the bot by DM
     src/history.js      Points history: recording, carry-forward and sparklines
+    src/png.js          Dependency-free PNG canvas and bitmap font
+    src/chart.js        The points-over-time line chart
     scripts/            One-shot entry points (manual update, command cleanup)
     deploy/             systemd unit, bootstrap script, and the `bot` command
     docs/               Deployment guide and the open code-review findings

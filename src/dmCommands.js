@@ -1,6 +1,7 @@
 'use strict';
 
 const { partitionByAge, explainDeleteFailure } = require('./commands');
+const { renderPointsChart } = require('./chart');
 
 /**
  * Developer commands, sent to the bot as a direct message.
@@ -55,6 +56,7 @@ function helpText() {
     "-post <text>    Post text to the leaderboard channel",
     '-freeze         Stop the timer updating the board',
     '-unfreeze       Resume automatic updates',
+    '-line-test [p]  Points chart as an image, DMed back (p: 24h, 7d, blank=all)',
     '-help           This list',
     '```',
     'Quotes around `-post` text are optional.',
@@ -91,6 +93,34 @@ function createDmHandler({ client, config, poster, state, describeUpdate, log = 
     setFrozen(false);
     log.log?.('Updates resumed by the developer.');
     return 'Unfrozen. The next scheduled update will run as normal.';
+  }
+
+  /** Windows accepted by -line-test, matching the /bingo-history choices. */
+  const CHART_PERIODS = { '24h': 24, '7d': 24 * 7, all: 0, '': 0 };
+
+  /**
+   * `-line-test` - the points chart as a PNG, DMed back rather than posted, so
+   * the rendering can be iterated on without the channel seeing every attempt.
+   */
+  async function cmdLineTest(args) {
+    const key = args.trim().toLowerCase();
+    if (!(key in CHART_PERIODS)) {
+      return `Unknown period "${args}". Use 24h, 7d, or leave it blank for the whole bingo.`;
+    }
+
+    const hours = CHART_PERIODS[key];
+    const label = hours === 24 ? 'the last 24 hours' : hours ? 'the last 7 days' : 'the whole bingo';
+    const png = renderPointsChart(state.read().history ?? [], { hours, title: `Points over ${label}` });
+
+    if (!png) {
+      return 'Not enough history to draw a line yet - two snapshots are needed,'
+        + ' and they are recorded one per update.';
+    }
+
+    return {
+      content: `Points over ${label} (${(png.length / 1024).toFixed(1)} KB)`,
+      files: [{ attachment: png, name: 'bingo-history.png' }],
+    };
   }
 
   async function cmdReload() {
@@ -169,6 +199,7 @@ function createDmHandler({ client, config, poster, state, describeUpdate, log = 
     post: cmdPost,
     freeze: cmdFreeze,
     unfreeze: cmdUnfreeze,
+    'line-test': cmdLineTest,
     help: async () => helpText(),
   };
 
@@ -204,7 +235,9 @@ function createDmHandler({ client, config, poster, state, describeUpdate, log = 
         return;
       }
 
-      await message.reply(truncate(await handler(command.args)));
+      // A handler may return text, or a payload with an attachment.
+      const result = await handler(command.args);
+      await message.reply(typeof result === 'string' ? truncate(result) : result);
     } catch (error) {
       log.error?.('DM command failed:', error);
       await message.reply(`That failed: ${error.message}`).catch(() => {});

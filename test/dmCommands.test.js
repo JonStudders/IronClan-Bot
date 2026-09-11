@@ -50,7 +50,8 @@ function makeMessage({ author = OWNER, content = '', guild = null, bot = false }
     author: { id: author, bot },
     guild,
     content,
-    reply: async (text) => { replies.push(typeof text === 'string' ? text : text.content); },
+    // Keep the whole payload: a reply may be text, or carry an attachment.
+    reply: async (payload) => { replies.push(payload); },
   };
 }
 
@@ -358,4 +359,59 @@ test('-help lists the freeze commands', async () => {
   await frozenHandler(makeState())(message);
   assert.ok(message.replies[0].includes('-freeze'));
   assert.ok(message.replies[0].includes('-unfreeze'));
+});
+
+// --- -line-test ---------------------------------------------------------------
+
+const { recordSnapshot } = require('../src/history');
+
+function historyState(hours = 48) {
+  let history = [];
+  const now = Date.now();
+  for (let h = hours; h >= 0; h--) {
+    history = recordSnapshot(
+      history,
+      [{ teamName: 'Alpha', points: (hours - h) * 10 }, { teamName: 'Bravo', points: (hours - h) * 7 }],
+      new Date(now - h * 3600 * 1000).toISOString()
+    );
+  }
+  let data = { history, frozen: false };
+  return { read: () => ({ ...data }), write: (next) => { data = { ...next }; } };
+}
+
+test('-line-test returns a PNG attachment rather than text', async () => {
+  const message = makeMessage({ content: '-line-test' });
+  await frozenHandler(historyState())(message);
+
+  const reply = message.replies[0];
+  assert.ok(reply.files, 'the reply carries a file');
+  assert.equal(reply.files[0].name, 'bingo-history.png');
+  assert.equal(reply.files[0].attachment.slice(1, 4).toString('ascii'), 'PNG');
+});
+
+test('-line-test accepts a period', async () => {
+  for (const period of ['24h', '7d', '']) {
+    const message = makeMessage({ content: `-line-test ${period}`.trim() });
+    await frozenHandler(historyState(240))(message);
+    assert.ok(message.replies[0].files, `period "${period}" should render`);
+  }
+});
+
+test('-line-test rejects an unknown period instead of silently using all', async () => {
+  const message = makeMessage({ content: '-line-test last-tuesday' });
+  await frozenHandler(historyState())(message);
+  assert.match(message.replies[0], /Unknown period/);
+});
+
+test('-line-test explains itself when there is no history yet', async () => {
+  const empty = { read: () => ({ history: [], frozen: false }), write: () => {} };
+  const message = makeMessage({ content: '-line-test' });
+  await frozenHandler(empty)(message);
+  assert.match(message.replies[0], /Not enough history/);
+});
+
+test('-line-test is developer-only like the rest', async () => {
+  const message = makeMessage({ author: STRANGER, content: '-line-test' });
+  await frozenHandler(historyState())(message);
+  assert.deepEqual(message.replies, []);
 });
