@@ -64,7 +64,8 @@ It is idempotent — safe to re-run — and never touches `.env`. It will:
 - clone the repo to `/opt/ironclan-bot` and install dependencies
 - install and enable the systemd unit from `deploy/ironclan-bot.service`
 - grant your deploy user passwordless sudo for **only** `systemctl … ironclan-bot`
-- install the `bot` control command to `/usr/local/bin`
+- link the `bot` control command into `/usr/local/bin` (a symlink, so deploys
+  keep it current)
 - enable unattended security updates
 
 ### Fill in the configuration
@@ -273,6 +274,7 @@ its messages and repost on the next cycle. Harmless, just not useful.
 | Deploy fails on `ssh` with `Permission denied` | Public key not in the server's `authorized_keys`, or `DEPLOY_USER` is wrong |
 | Deploy fails with `Host key verification failed` | `DEPLOY_KNOWN_HOSTS` is stale — re-run `ssh-keyscan`. It changes if you rebuild the instance |
 | `sudo: a password is required` | The sudoers rule did not install; re-run `bootstrap.sh` |
-| `bot: command not found` | Log out and back in - bootstrap added you to a new group |
+| `bot: command not found` | Re-run `bash /opt/ironclan-bot/deploy/bootstrap.sh` - the symlink is created there, so a server bootstrapped before `bot` existed will not have it |
+| `bot logs` shows nothing | Log out and back in - bootstrap added you to the `systemd-journal` group and the shell needs a new session |
 | Service active but no board | `journalctl -u ironclan-bot -n 50` — usually a bad token or a sheet that returned no teams |
 | Board posted twice per cycle | The scheduled workflow is still enabled somewhere, or two instances are running |

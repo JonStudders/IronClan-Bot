@@ -76,8 +76,12 @@ else
 fi
 
 # --- The 'bot' control command ----------------------------------------------
-say "Installing the 'bot' command"
-sudo install -m 755 "$APP_DIR/deploy/bot" /usr/local/bin/bot
+# A symlink, not a copy: deploys update deploy/bot in the working tree, and a
+# symlink picks that up for free. A copy would silently go stale, since the
+# deploy has no privilege to write to /usr/local/bin.
+say "Linking the 'bot' command"
+sudo chmod +x "$APP_DIR/deploy/bot"
+sudo ln -sfn "$APP_DIR/deploy/bot" /usr/local/bin/bot
 
 # Reading a unit's journal needs group membership; Ubuntu's default user is
 # usually in 'adm' already, but say so explicitly rather than relying on it.
