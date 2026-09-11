@@ -28,7 +28,7 @@ else
   say "Node $(node -v) already installed"
 fi
 
-sudo apt-get install -y git
+sudo apt-get install -y git curl
 
 # --- Service account --------------------------------------------------------
 # A system account with no login shell: it exists only to own the process.
@@ -75,6 +75,15 @@ else
   NEEDS_ENV=0
 fi
 
+# --- The 'bot' control command ----------------------------------------------
+say "Installing the 'bot' command"
+sudo install -m 755 "$APP_DIR/deploy/bot" /usr/local/bin/bot
+
+# Reading a unit's journal needs group membership; Ubuntu's default user is
+# usually in 'adm' already, but say so explicitly rather than relying on it.
+sudo usermod -aG systemd-journal "$DEPLOY_USER" || true
+sudo usermod -aG adm "$DEPLOY_USER" || true
+
 # --- systemd ----------------------------------------------------------------
 say "Installing the systemd unit"
 sudo cp "$APP_DIR/deploy/ironclan-bot.service" /etc/systemd/system/ironclan-bot.service
@@ -105,12 +114,17 @@ if [ "$NEEDS_ENV" = "1" ]; then
   discordChannelId - then:
 
       sudo systemctl start ironclan-bot
-      journalctl -u ironclan-bot -f
+      bot logs
+
+  Then:  bot status | bot logs | bot restart | bot doctor
+
+  If 'bot' is not found, log out and back in - you were just added to the
+  systemd-journal group and the shell needs a new session to pick it up.
 
 EOF
 else
   say "Restarting the service"
   sudo systemctl restart ironclan-bot
   sleep 3
-  sudo systemctl status ironclan-bot --no-pager || true
+  /usr/local/bin/bot status || true
 fi

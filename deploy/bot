@@ -1,0 +1,286 @@
+#!/usr/bin/env bash
+#
+# Everyday control for the Iron Clan bot. Installed to /usr/local/bin/bot by
+# deploy/bootstrap.sh, so it is version-controlled rather than something you
+# have to remember or recreate when the VM is rebuilt.
+#
+#   bot                  what is it doing right now
+#   bot logs             follow the log, readably
+#   bot restart          restart it
+#   bot doctor           check the things that actually go wrong
+#
+set -uo pipefail
+
+APP_DIR="${IRONCLAN_DIR:-/opt/ironclan-bot}"
+UNIT="ironclan-bot"
+
+bold()  { printf '\033[1m%s\033[0m\n' "$1"; }
+ok()    { printf '  \033[32mok\033[0m    %s\n' "$1"; }
+warn()  { printf '  \033[33mwarn\033[0m  %s\n' "$1"; }
+bad()   { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; }
+info()  { printf '  %-5s %s\n' '' "$1"; }
+
+# journald prints "2026-09-11T10:23:45+0100 ironclan-bot[1432]: message".
+# Keep the time and the message, drop the date, host and pid.
+tidy() {
+  sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2}T([0-9:]{8})[^ ]* [^ ]+\[[0-9]+\]: /\1  /'
+}
+
+# Can the 'ironclan' service account read/write this path? Owner-matching is
+# ignored deliberately: the service never owns the checked-out tree.
+readable_by_service() {
+  local group mode
+  group="$(stat -c '%G' "$1" 2>/dev/null)" || return 1
+  mode="$(stat -c '%a' "$1" 2>/dev/null)" || return 1
+  # world-readable, or group-readable and group-owned by the service account
+  [ $(( 8#${mode} & 8#004 )) -ne 0 ] && return 0
+  [ "$group" = "ironclan" ] && [ $(( 8#${mode} & 8#040 )) -ne 0 ]
+}
+
+writable_by_service() {
+  local group mode
+  group="$(stat -c '%G' "$1" 2>/dev/null)" || return 1
+  mode="$(stat -c '%a' "$1" 2>/dev/null)" || return 1
+  [ $(( 8#${mode} & 8#002 )) -ne 0 ] && return 0
+  [ "$group" = "ironclan" ] && [ $(( 8#${mode} & 8#020 )) -ne 0 ]
+}
+
+usage() {
+  cat <<'EOF'
+Usage: bot <command>
+
+  (no command)   Same as `bot status`
+  status         Is it running, since when, on which commit
+  start          Start the service
+  stop           Stop the service (it will NOT restart on its own)
+  restart        Restart the service
+  logs [N|today] Follow the log, or show the last N lines / today's
+  logs -v        Follow with full journald detail
+  errors         Only warnings and failures, last 200 lines
+  update         Pull main and restart, for when you cannot push
+  version        Deployed commit vs origin/main
+  doctor         Check config, permissions, connectivity and drift
+
+Deploys happen automatically on push to main; `update` is the manual fallback.
+EOF
+}
+
+require_dir() {
+  if [ ! -d "$APP_DIR" ]; then
+    echo "No install found at $APP_DIR" >&2
+    exit 1
+  fi
+}
+
+cmd_status() {
+  require_dir
+  if systemctl is-active --quiet "$UNIT"; then
+    bold "● running"
+  elif systemctl is-failed --quiet "$UNIT"; then
+    bold "● FAILED"
+  else
+    bold "● stopped"
+  fi
+
+  # One property per call: `systemctl show --property=A,B,C` does not promise
+  # to emit them in the order asked for, so reading them as a list risks
+  # pairing a label with the wrong value.
+  show() { systemctl show "$UNIT" --property="$1" --value 2>/dev/null; }
+
+  info "state     $(show ActiveState) ($(show SubState))"
+
+  local started restarts memory
+  started="$(show ExecMainStartTimestamp)"
+  restarts="$(show NRestarts)"
+  memory="$(show MemoryCurrent)"
+
+  [ -n "$started" ] && info "since     ${started}"
+  [ -n "$restarts" ] && info "restarts  ${restarts}"
+  if [ -n "$memory" ] && [ "$memory" != "[not set]" ] 2>/dev/null && [ "$memory" -gt 0 ] 2>/dev/null; then
+    info "memory    $(( memory / 1024 / 1024 )) MB"
+  fi
+
+  local commit
+  commit="$(git -C "$APP_DIR" --no-pager log -1 --format='%h  %s' 2>/dev/null || echo 'unknown')"
+  info "commit    ${commit}"
+
+  echo
+  bold "Last few lines"
+  journalctl -u "$UNIT" -n 8 --no-pager --no-hostname -o short-iso 2>/dev/null | tidy
+}
+
+cmd_logs() {
+  local arg="${1:-}"
+  case "$arg" in
+    -v|--verbose) journalctl -u "$UNIT" -f -n 50 ;;
+    today)        journalctl -u "$UNIT" --since today --no-pager --no-hostname -o short-iso | tidy ;;
+    '')           echo "Following $UNIT - Ctrl-C to stop"; echo
+                  journalctl -u "$UNIT" -f -n 30 --no-hostname -o short-iso | tidy ;;
+    *[!0-9]*)     journalctl -u "$UNIT" --since "$arg" --no-pager --no-hostname -o short-iso | tidy ;;
+    *)            journalctl -u "$UNIT" -n "$arg" --no-pager --no-hostname -o short-iso | tidy ;;
+  esac
+}
+
+cmd_errors() {
+  # priority 4 = warning and worse, plus anything the bot logged as failed.
+  journalctl -u "$UNIT" -n 200 --no-pager --no-hostname -o short-iso 2>/dev/null \
+    | grep -Ei 'error|failed|warn|unhandled|refus' | tidy \
+    || echo "No errors or warnings in the last 200 lines."
+}
+
+cmd_update() {
+  require_dir
+  bold "Updating from origin/main"
+  git -C "$APP_DIR" fetch --prune origin main
+  # Never `git clean`: state.json is untracked and holds the rank history.
+  git -C "$APP_DIR" reset --hard origin/main
+  git -C "$APP_DIR" --no-pager log -1 --oneline
+  ( cd "$APP_DIR" && npm ci --omit=dev )
+  sudo systemctl restart "$UNIT"
+  sleep 5
+  cmd_status
+}
+
+cmd_version() {
+  require_dir
+  git -C "$APP_DIR" fetch --quiet --prune origin main 2>/dev/null || true
+  local local_sha remote_sha
+  local_sha="$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null)"
+  remote_sha="$(git -C "$APP_DIR" rev-parse origin/main 2>/dev/null)"
+
+  bold "Deployed"
+  git -C "$APP_DIR" --no-pager log -1 --format='  %h  %s  (%cr)' HEAD
+  if [ "$local_sha" = "$remote_sha" ]; then
+    ok "up to date with origin/main"
+  else
+    warn "origin/main has moved on - run 'bot update' or push again to redeploy"
+    git -C "$APP_DIR" --no-pager log --oneline HEAD..origin/main | sed 's/^/    /'
+  fi
+}
+
+cmd_doctor() {
+  require_dir
+  local problems=0
+
+  bold "Service"
+  if systemctl is-active --quiet "$UNIT"; then
+    ok "$UNIT is running"
+  else
+    bad "$UNIT is not running - try 'bot logs 50'"
+    problems=$((problems + 1))
+  fi
+  if systemctl is-enabled --quiet "$UNIT" 2>/dev/null; then
+    ok "starts on boot"
+  else
+    warn "not enabled - it will not come back after a reboot"
+  fi
+
+  echo
+  bold "Configuration"
+  local env_file="$APP_DIR/.env"
+  if [ -f "$env_file" ]; then
+    ok ".env exists"
+    # Test the world bits, not the number: "604" is numerically below 640 but
+    # is world-readable, which for a file holding the bot token is the thing
+    # that actually matters.
+    local mode
+    mode="$(stat -c '%a' "$env_file")"
+    if [ $(( 8#${mode} & 8#007 )) -ne 0 ]; then
+      warn ".env is mode ${mode} - it is readable by any user. Run: chmod 640 ${env_file}"
+    else
+      ok ".env permissions are ${mode}"
+    fi
+
+    # Key names only. Values are never read or printed.
+    local missing=""
+    for key in botToken sheetId discordChannelId; do
+      grep -qE "^[[:space:]]*(export[[:space:]]+)?${key}[[:space:]]*=[[:space:]]*[^[:space:]]" "$env_file" \
+        || missing="$missing $key"
+    done
+    if [ -z "$missing" ]; then
+      ok "required keys are set (botToken, sheetId, discordChannelId)"
+    else
+      bad "missing or empty in .env:$missing"
+      problems=$((problems + 1))
+    fi
+
+    # The sudoers rule only permits systemctl, so 'sudo -u ironclan test'
+    # would prompt for a password. Inspect group and mode instead - the same
+    # thing the kernel checks.
+    if readable_by_service "$env_file"; then
+      ok "the service account can read .env"
+    else
+      bad "the 'ironclan' service account cannot read .env - the bot will not start"
+      info "fix: sudo chown ${USER}:ironclan $env_file && chmod 640 $env_file"
+      problems=$((problems + 1))
+    fi
+  else
+    bad ".env not found at $env_file"
+    problems=$((problems + 1))
+  fi
+
+  echo
+  bold "State"
+  local state_file="$APP_DIR/state.json"
+  if [ -f "$state_file" ]; then
+    ok "state.json exists ($(stat -c '%s' "$state_file") bytes)"
+  else
+    warn "no state.json yet - normal before the first successful update"
+  fi
+  if writable_by_service "$APP_DIR"; then
+    ok "the service account can write to $APP_DIR"
+  else
+    bad "the service account cannot write to $APP_DIR - rank arrows will not persist"
+    info "fix: sudo chown -R ${USER}:ironclan $APP_DIR && sudo chmod -R g+rwX $APP_DIR"
+    problems=$((problems + 1))
+  fi
+
+  echo
+  bold "Connectivity"
+  for target in "https://discord.com/api/v10/gateway" "https://docs.google.com"; do
+    local code
+    code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$target" 2>/dev/null || echo 000)"
+    if [ "$code" = "000" ]; then
+      bad "cannot reach $target"
+      problems=$((problems + 1))
+    else
+      ok "$target -> HTTP $code"
+    fi
+  done
+
+  echo
+  bold "Version"
+  cmd_version
+
+  echo
+  bold "Recent trouble"
+  local recent
+  recent="$(journalctl -u "$UNIT" --since '1 hour ago' --no-pager --no-hostname -o short-iso 2>/dev/null \
+            | grep -Eic 'error|failed|unhandled' || true)"
+  if [ "${recent:-0}" -gt 0 ]; then
+    warn "${recent} error line(s) in the last hour - see 'bot errors'"
+  else
+    ok "no errors logged in the last hour"
+  fi
+
+  echo
+  if [ "$problems" -eq 0 ]; then
+    bold "No problems found."
+  else
+    bold "${problems} problem(s) found."
+    exit 1
+  fi
+}
+
+case "${1:-status}" in
+  status)          cmd_status ;;
+  start|stop)      sudo systemctl "$1" "$UNIT" && cmd_status ;;
+  restart)         sudo systemctl restart "$UNIT" && sleep 3 && cmd_status ;;
+  logs)            shift; cmd_logs "${1:-}" ;;
+  errors)          cmd_errors ;;
+  update)          cmd_update ;;
+  version)         cmd_version ;;
+  doctor)          cmd_doctor ;;
+  -h|--help|help)  usage ;;
+  *)               echo "Unknown command: $1" >&2; echo; usage; exit 1 ;;
+esac

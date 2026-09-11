@@ -54,15 +54,12 @@ jobs:
           fi
           echo "All deploy secrets are present."
 
-      - name: Deploy over SSH
+      - name: Set up the SSH key
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-
           mkdir -p ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
@@ -71,6 +68,15 @@ jobs:
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
+      # Deploy, health-check and roll back in a single SSH session, so the
+      # previous commit stays in scope. A push that crashes on boot leaves the
+      # board running the last good version rather than leaving it down.
+      - name: Deploy, verify, roll back on failure
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
           ssh -i ~/.ssh/deploy_key \
               -o IdentitiesOnly=yes \
               -o ConnectTimeout=15 \
@@ -78,38 +84,49 @@ jobs:
               'bash -euo pipefail -s' <<'REMOTE'
             cd /opt/ironclan-bot
 
-            echo "--- Updating to origin/main ---"
+            PREVIOUS="$(git rev-parse HEAD)"
+            echo "--- Currently deployed: $(git --no-pager log -1 --oneline) ---"
+
+            echo "--- Fetching origin/main ---"
             git fetch --prune origin main
             # reset --hard, never `git clean`: state.json is untracked and must
-            # survive the deploy or every board loses its rank arrows.
+            # survive, or every deploy costs a round of rank arrows.
             git reset --hard origin/main
-            git --no-pager log -1 --oneline
+            echo "--- Deploying: $(git --no-pager log -1 --oneline) ---"
 
             echo "--- Installing dependencies ---"
             npm ci --omit=dev
 
             echo "--- Restarting ---"
             sudo systemctl restart ironclan-bot
-          REMOTE
 
-      - name: Verify the service came up
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-        run: |
-          set -euo pipefail
-          # Give it a moment to connect to Discord and post before judging it.
-          sleep 20
-          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
-              "${DEPLOY_USER}@${DEPLOY_HOST}" 'bash -euo pipefail -s' <<'REMOTE'
-            if ! systemctl is-active --quiet ironclan-bot; then
-              echo "::error::ironclan-bot is not running after the deploy."
-              sudo systemctl status ironclan-bot --no-pager || true
-              journalctl -u ironclan-bot -n 50 --no-pager || true
-              exit 1
+            # Long enough to connect to Discord, read the sheet and post. A
+            # crash-on-boot shows up well inside this.
+            echo "--- Waiting 25s for it to settle ---"
+            sleep 25
+
+            if systemctl is-active --quiet ironclan-bot; then
+              echo "--- Healthy ---"
+              journalctl -u ironclan-bot -n 20 --no-pager --no-hostname
+              exit 0
             fi
-            echo "--- Recent log ---"
-            journalctl -u ironclan-bot -n 20 --no-pager
+
+            echo "--- UNHEALTHY: the new version is not running ---"
+            journalctl -u ironclan-bot -n 40 --no-pager --no-hostname || true
+
+            echo "--- Rolling back to ${PREVIOUS} ---"
+            git reset --hard "$PREVIOUS"
+            npm ci --omit=dev
+            sudo systemctl restart ironclan-bot
+            sleep 15
+
+            if systemctl is-active --quiet ironclan-bot; then
+              echo "--- Rolled back. The board is running the previous version. ---"
+            else
+              echo "--- ROLLBACK ALSO FAILED. The bot is DOWN and needs attention. ---"
+              journalctl -u ironclan-bot -n 40 --no-pager --no-hostname || true
+            fi
+            exit 1
           REMOTE
 
       - name: Remove the deploy key from the runner

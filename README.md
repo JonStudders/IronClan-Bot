@@ -176,7 +176,7 @@ cause and deletes nothing.
     src/state.js        Persists message id, previous ranks and lead history
     src/commands.js     Slash commands (/bingo-lead, /bingo-clear)
     scripts/            One-shot entry points (manual update, command cleanup)
-    deploy/             systemd unit and server bootstrap script
+    deploy/             systemd unit, bootstrap script, and the `bot` command
     docs/               Deployment guide and the open code-review findings
     test/               Unit tests (`node --test`)
 
@@ -211,6 +211,16 @@ tests and, if they pass, redeploys.
 
 The bot makes only **outbound** connections, so no inbound port beyond SSH
 needs opening.
+
+On the server, everything is driven by one command:
+
+    bot            # status
+    bot logs       # follow the log, readably
+    bot restart
+    bot doctor     # check config, permissions, connectivity and drift
+
+A push that crashes on boot **rolls itself back** to the previous commit, so a
+bad deploy costs a red tick rather than a dead leaderboard.
 
 ### Why persistent rather than scheduled
 

@@ -64,6 +64,7 @@ It is idempotent — safe to re-run — and never touches `.env`. It will:
 - clone the repo to `/opt/ironclan-bot` and install dependencies
 - install and enable the systemd unit from `deploy/ironclan-bot.service`
 - grant your deploy user passwordless sudo for **only** `systemctl … ironclan-bot`
+- install the `bot` control command to `/usr/local/bin`
 - enable unattended security updates
 
 ### Fill in the configuration
@@ -78,7 +79,7 @@ registered. Then:
 
 ```bash
 sudo systemctl start ironclan-bot
-journalctl -u ironclan-bot -f
+bot logs
 ```
 
 You want to see:
@@ -89,18 +90,45 @@ Registered 2 slash command(s) for guild 296396357231575041.
 Leaderboard posted with 8 team(s) across 2 message(s).
 ```
 
-### Day-to-day
+### Day-to-day: the `bot` command
+
+`bootstrap.sh` installs `/usr/local/bin/bot`, so you never need to type
+`systemctl` or `journalctl`:
 
 ```bash
-sudo systemctl status ironclan-bot      # is it up?
-journalctl -u ironclan-bot -f           # follow the log
-journalctl -u ironclan-bot --since '1 hour ago'
-sudo systemctl restart ironclan-bot
+bot                # running? since when? on which commit?
+bot logs           # follow the log, cleanly
+bot logs 100       # last 100 lines
+bot logs today
+bot errors         # only warnings and failures
+bot restart        # also: bot start / bot stop
+bot version        # deployed commit vs origin/main
+bot update         # manual pull + restart, when you cannot push
+bot doctor         # check everything that usually goes wrong
 ```
+
+`bot logs` strips journald's date, hostname and pid:
+
+```
+10:23:45  Leaderboard reposted with 8 team(s) across 2 message(s).
+10:23:45    Removed 2 previous message(s).
+10:33:47  Leaderboard reposted with 8 team(s) across 2 message(s).
+```
+
+`bot logs -v` keeps the full detail when you need it.
+
+**`bot doctor`** is what to reach for when the board is not updating. It checks
+the service state; that `.env` exists, holds the required keys, is readable by
+the service account and *not* by everyone else; that `state.json` is writable;
+that Discord and Google Sheets are reachable; whether the deployed commit has
+drifted from `origin/main`; and whether anything errored in the last hour.
 
 The service restarts automatically on crash (10s back-off) and starts on boot.
 If it fails five times in a minute it gives up rather than hammering Discord's
-API — `systemctl reset-failed ironclan-bot` clears that.
+API - `systemctl reset-failed ironclan-bot` clears that.
+
+The script lives at `deploy/bot` in the repo, so it is version-controlled and
+survives a rebuild of the VM.
 
 ---
 
@@ -112,6 +140,7 @@ Already done, committed alongside this document:
 | --- | --- |
 | `deploy/ironclan-bot.service` | systemd unit — restart policy and sandboxing |
 | `deploy/bootstrap.sh` | one-time server setup, idempotent |
+| `deploy/bot` | the `bot` control command installed on the server |
 | `.github/workflows/ci.yml` | tests on every push; deploy on `main` |
 | `.github/workflows/leaderboard.yml` | **schedule removed** — manual fallback only |
 
@@ -141,6 +170,23 @@ Append the **public** half to the server:
 ssh-copy-id -i ~/.ssh/ironclan_deploy.pub ubuntu@<SERVER_IP>
 # or by hand:
 cat ~/.ssh/ironclan_deploy.pub | ssh ubuntu@<SERVER_IP> 'cat >> ~/.ssh/authorized_keys'
+```
+
+**If you generated the key on the server itself** (rather than on your own
+machine), you are already logged in, so skip `ssh` entirely - and do not use
+`sudo`, which would run ssh as root and look for root's keys:
+
+```bash
+cat ~/.ssh/ironclan_deploy.pub >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+Then copy the **private** key into the GitHub secret and delete it from the
+server - the server only ever needs the public half:
+
+```bash
+cat ~/.ssh/ironclan_deploy     # paste this into DEPLOY_SSH_KEY, then:
+rm ~/.ssh/ironclan_deploy
 ```
 
 Confirm it works before wiring up Actions:
@@ -181,9 +227,15 @@ never sent from Actions.
    pull request — a fork PR must not be able to reach the server.
 3. Over SSH: `git fetch` → `git reset --hard origin/main` → `npm ci --omit=dev`
    → `systemctl restart`.
-4. It waits 20 seconds, checks the service is still active, and prints the last
-   20 log lines. If the bot crashed on boot, the deploy goes red and the log is
-   in the Actions output.
+4. It waits 25 seconds and checks the service is still running.
+5. **If it is not, the deploy rolls itself back**: the commit deployed before
+   this push is restored, dependencies reinstalled, and the service restarted.
+   The board keeps running the last good version instead of staying down. The
+   Actions run still goes red, with the failing log in the output.
+
+So a push that crashes on boot costs you a red tick, not a dead leaderboard.
+The only case needing hands is a rollback that *also* fails, which the log
+says explicitly.
 
 `git reset --hard` and never `git clean` — `state.json` is untracked and must
 survive, or every deploy costs a round of rank arrows.
@@ -221,5 +273,6 @@ its messages and repost on the next cycle. Harmless, just not useful.
 | Deploy fails on `ssh` with `Permission denied` | Public key not in the server's `authorized_keys`, or `DEPLOY_USER` is wrong |
 | Deploy fails with `Host key verification failed` | `DEPLOY_KNOWN_HOSTS` is stale — re-run `ssh-keyscan`. It changes if you rebuild the instance |
 | `sudo: a password is required` | The sudoers rule did not install; re-run `bootstrap.sh` |
+| `bot: command not found` | Log out and back in - bootstrap added you to a new group |
 | Service active but no board | `journalctl -u ironclan-bot -n 50` — usually a bad token or a sheet that returned no teams |
 | Board posted twice per cycle | The scheduled workflow is still enabled somewhere, or two instances are running |
