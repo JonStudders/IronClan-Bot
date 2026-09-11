@@ -75,8 +75,8 @@ nano /opt/ironclan-bot/.env
 ```
 
 At minimum `botToken`, `sheetId` and `discordChannelId`. Also set
-`applicationId` and `discordServerId` if you want the slash commands
-registered. Then:
+`applicationId` and `discordServerId` for the slash commands to register, and
+`ownerId` (your Discord user id) for the developer DM commands. Then:
 
 ```bash
 sudo systemctl start ironclan-bot
@@ -251,7 +251,8 @@ CPU. If the instance disappears, that is why. Upgrading the account to
 Pay As You Go — which costs nothing while you stay inside the Always Free
 limits — removes the risk.
 
-**Slash commands work again**, since something is finally online to answer them.
+**Slash commands and the developer DM commands work**, since something is
+finally online to answer them. DM the bot `-help` to see the developer list.
 `npm start` re-registers them on boot. `/bingo-clear` still needs **2FA on the
 bot owner's Discord account** — the server requires 2FA for moderation actions,
 and that is an account setting, not a permission.

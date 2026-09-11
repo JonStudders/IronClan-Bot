@@ -105,22 +105,46 @@ one of them can appear. Showing genuine clan-wide top threes would need
 per-player data the sheet does not currently expose. The footer says
 `one entry per team` to make this explicit.
 
-## Slash commands
+## Commands
+
+### Slash commands (in the server)
 
 | Command | Who can use it | What it does |
 | --- | --- | --- |
-| `/bingo-lead` | Anyone | Posts who is currently leading and when the lead last changed |
-| `/bingo-clear` | Manage Messages | Deletes every message in the channel except the boards and pinned messages |
+| `/bingo-lead` | Anyone | Posts who is leading and when the lead last changed |
+| `/bingo-clear` | Manage Messages, **or the developer** | Deletes every message in the channel except the boards and pinned messages |
 
 `/bingo-clear` is destructive, so it is gated three ways: the command requires
 Manage Messages, the handler re-checks the caller, and the caller must confirm
-on a button before anything is deleted. Deleting other people's messages needs
-Manage Messages - and if the server requires 2FA for moderation, the bot
-owner's account needs 2FA enabled too.
+on a button before anything is deleted. The account in `ownerId` passes the
+permission check whatever the guild's roles say - the confirmation still
+applies.
 
-Commands are registered per-guild on startup, which takes effect immediately.
-This needs `applicationId` and `discordServerId` in `.env`; without them the
-leaderboard still runs and registration is skipped with a warning.
+### Developer commands (by DM)
+
+Direct-message the bot. Only the account in `ownerId` is obeyed; anyone else is
+ignored in silence, so the commands are not advertised.
+
+    -reload         Force a leaderboard update now
+    -delete <n>     Delete the last n messages in the leaderboard channel
+    -post <text>    Post text to the leaderboard channel
+    -help           List the commands
+
+`-delete` never touches the leaderboard panels or pinned messages, and messages
+over 14 days old are removed one at a time because Discord refuses to bulk
+delete them. `-post` sends a plain message, which carries no embed, so the
+poster does not mistake it for one of its own panels and will not delete it.
+
+Quotes around `-post` text are optional: `-post 'board frozen'` and
+`-post board frozen` are the same.
+
+Reading DM text needs **no privileged intent** - Discord exempts DMs with the
+app from the Message Content intent, alongside messages that mention it. The
+bot requests `Guilds` and `DirectMessages` only, so no Developer Portal change
+is needed.
+
+Both need something listening on Discord's gateway, so they work under
+`npm start` on the server, not under a one-shot run.
 
 ## State file
 
@@ -175,6 +199,7 @@ cause and deletes nothing.
     src/scheduler.js    Repeating run loop with retry-on-failure backoff
     src/state.js        Persists message id, previous ranks and lead history
     src/commands.js     Slash commands (/bingo-lead, /bingo-clear)
+    src/dmCommands.js   Developer commands sent to the bot by DM
     scripts/            One-shot entry points (manual update, command cleanup)
     deploy/             systemd unit, bootstrap script, and the `bot` command
     docs/               Deployment guide and the open code-review findings

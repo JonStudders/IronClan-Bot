@@ -8,6 +8,7 @@ const { Events } = require('discord.js');
 const { createBot } = require('./src/bot');
 const { createScheduler } = require('./src/scheduler');
 const { registerCommands, createInteractionHandler } = require('./src/commands');
+const { createDmHandler } = require('./src/dmCommands');
 
 /**
  * Long-running entry point: stays connected and updates on a timer.
@@ -26,7 +27,17 @@ const scheduler = createScheduler({
   onError: (error) => console.error('Leaderboard update failed:', error),
 });
 
-client.on(Events.InteractionCreate, createInteractionHandler({ state, poster }));
+client.on(Events.InteractionCreate, createInteractionHandler({ state, poster, config }));
+
+// Developer commands over DM. Without an owner id there is nobody to obey, so
+// the listener is not attached at all.
+if (config.ownerId) {
+  client.on(Events.MessageCreate, createDmHandler({
+    client, config, poster, describeUpdate: bot.describeUpdate,
+  }));
+} else {
+  console.warn('ownerId is not set - developer DM commands are disabled.');
+}
 
 client.once(Events.ClientReady, async () => {
   console.log('Iron Clan bot is online.');

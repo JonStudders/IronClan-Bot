@@ -124,8 +124,10 @@ function confirmRow(disabled = false) {
  * is registered as requiring Manage Messages, the handler re-checks the caller,
  * and the caller must confirm on a button before anything is removed.
  */
-async function handleClear(interaction, { poster, log = console }) {
-  if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages)) {
+async function handleClear(interaction, { poster, config = {}, log = console }) {
+  // The developer always has access, whatever the guild's roles say.
+  const isOwner = Boolean(config.ownerId) && interaction.user.id === config.ownerId;
+  if (!isOwner && !interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages)) {
     await interaction.reply({
       content: 'You need the Manage Messages permission to use this.',
       flags: MessageFlags.Ephemeral,

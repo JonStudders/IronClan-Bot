@@ -31,6 +31,10 @@ function loadConfig(env = {}) {
     sheetName: env.sheetName || 'Leaderboard',
     channelId: env.discordChannelId,
 
+    // The developer's Discord user id. They bypass the permission checks on
+    // every command, and are the only account the DM commands obey.
+    ownerId: env.ownerId || env.developerId || '',
+
     // Per-event settings, so a new bingo is a config edit not a code edit.
     title: env.bingoTitle || 'Iron Clan Bingo',
     leaderboardUrl: env.leaderboardUrl || '',

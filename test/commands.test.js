@@ -119,3 +119,58 @@ test('the 2FA failure is named distinctly from a missing permission', () => {
 test('an unrecognised error falls back to its own message', () => {
   assert.equal(explainDeleteFailure({ code: 1, message: 'kaboom' }), 'kaboom');
 });
+
+// --- The developer bypasses the permission gate ------------------------------
+
+const { createInteractionHandler } = require('../src/commands');
+const { loadConfig } = require('../src/config');
+
+const OWNER = '995414858289909780';
+const ownerConfig = loadConfig({
+  botToken: 't', sheetId: 's', discordChannelId: 'c', ownerId: OWNER,
+});
+
+/** A /bingo-clear interaction from `userId`, holding no guild permissions. */
+function clearInteraction(userId) {
+  const sent = { replies: [], edits: [], deferred: false };
+  return {
+    sent,
+    isChatInputCommand: () => true,
+    commandName: 'bingo-clear',
+    user: { id: userId, tag: 'someone' },
+    memberPermissions: { has: () => false },
+    channel: { messages: { fetch: async () => new Map() } },
+    get deferred() { return sent.deferred; },
+    replied: false,
+    reply: async (m) => { sent.replies.push(typeof m === 'string' ? m : m.content); },
+    deferReply: async () => { sent.deferred = true; },
+    editReply: async (m) => { sent.edits.push(typeof m === 'string' ? m : m.content); },
+  };
+}
+
+const poster = { isBoard: () => false };
+
+test('the developer may run /bingo-clear without Manage Messages', async () => {
+  const interaction = clearInteraction(OWNER);
+  await createInteractionHandler({ poster, config: ownerConfig, log: { log() {} } })(interaction);
+
+  assert.equal(interaction.sent.deferred, true, 'it should get past the permission gate');
+  assert.deepEqual(interaction.sent.replies, [], 'no refusal');
+});
+
+test('anyone else without Manage Messages is refused', async () => {
+  const interaction = clearInteraction('111111111111111111');
+  await createInteractionHandler({ poster, config: ownerConfig, log: { log() {} } })(interaction);
+
+  assert.equal(interaction.sent.deferred, false, 'it must stop before doing anything');
+  assert.match(interaction.sent.replies[0], /need the Manage Messages permission/);
+});
+
+test('with no owner configured, the permission gate still applies', async () => {
+  const noOwner = loadConfig({ botToken: 't', sheetId: 's', discordChannelId: 'c' });
+  const interaction = clearInteraction(OWNER);
+  await createInteractionHandler({ poster, config: noOwner, log: { log() {} } })(interaction);
+
+  assert.equal(interaction.sent.deferred, false);
+  assert.match(interaction.sent.replies[0], /need the Manage Messages permission/);
+});

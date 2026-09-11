@@ -1,6 +1,6 @@
 'use strict';
 
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, Partials } = require('discord.js');
 
 const { loadConfig, validateConfig } = require('./config');
 const { createSheetReader, sortTeams } = require('./sheet');
@@ -21,7 +21,14 @@ const { createPoster } = require('./poster');
 function createBot(env = process.env, { log = console } = {}) {
   const config = validateConfig(loadConfig(env));
 
-  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  // DirectMessages is not a privileged intent, and Discord exempts DMs with
+  // the app from the Message Content intent - so the developer DM commands
+  // need no Developer Portal change. Partials.Channel is required because a
+  // DM channel arrives uncached.
+  const client = new Client({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages],
+    partials: [Partials.Channel],
+  });
   const state = createStateStore({ filePath: config.stateFile, log });
 
   const readTeams = createSheetReader(config);
