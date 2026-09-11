@@ -29,7 +29,7 @@ numbered position or carries the points column. That keeps the other content on
 the tab (the WOM link row) off the board, while still showing a team whose
 points formula is momentarily blank rather than silently dropping it.
 
-The three **Top X gainer per team** tables lower down the same tab are read
+The **Top X gainer per team** tables lower down the same tab are read
 separately, for the gainers message. They sit under blank header cells, which
 `public-google-sheets-parser` discards, so they are read from the raw grid via
 Google's gviz endpoint instead (`src/grid.js`). Their columns are located from
@@ -74,9 +74,12 @@ the bot has not seen before.
 
 ### 2. Top gainers
 
-The leading individual players for each tracked metric, in a code block so the
-columns align. Top 3 per category by default (`gainersRows`), or turn the whole
-message off with `gainers=off`.
+The leading individual players for each tracked metric - currently **EHB and
+EHP** - in a code block. Top 3 per category by default (`gainersRows`), or turn
+the whole message off with `gainers=off`.
+
+The sheet also carries a Top XP gainer table. It is deliberately not shown;
+tracking it again is one line in `METRICS` in `src/gainers.js`.
 
     EHB gained
     1. FFA | Big Bald Cunts | 73.2
@@ -85,14 +88,15 @@ message off with `gainers=off`.
 
     EHP gained
     1. IronLebanese | Zappers Aint Playin | 66.9
-    ...
+    2. Neurron | Euskadi Ta Askatasuna | 58.6
+    3. Evenfisher1 | Boats and Hoes | 53.9
 
 Names are shown in full rather than truncated, and fields are pipe-separated
 rather than padded into columns - team names vary too much in length for
 columns to line up without leaving a large gap after every short name.
 
-It carries no "Last Updated" line of its own, since the leaderboard sits
-directly above it and has one.
+It carries no "Last Updated" line and no footer of its own, since the
+leaderboard sits directly above it and has both.
 
 **On the candidate pool:** the sheet publishes the top gainer *per team*, so
 these are the best players among each team's own leader — not a true clan-wide
@@ -164,7 +168,7 @@ cause and deletes nothing.
     src/format.js       Medals, progress bars, gaps and rank-movement arrows
     src/embed.js        Renders the leaderboard embed
     src/grid.js         Reads a tab as a raw grid (for the blank-header tables)
-    src/gainers.js      Locates and joins the three top-gainer tables
+    src/gainers.js      Locates and joins the top-gainer tables
     src/gainersEmbed.js Renders the top-gainers embed
     src/poster.js       Owns the bot's messages (post once, then edit)
     src/bot.js          Assembles the parts, shared by both entry points

@@ -12,9 +12,9 @@ const FIXED_NOW = 1_700_000_000_000;
 
 const entry = (player, value) => ({ player, value });
 const gainers = [
-  { team: 'Llama', ehb: entry('A Llama', 12.4), ehp: entry('Llamaboy', 9.8), xp: entry('A Llama', 12_300_000) },
-  { team: 'Fetired', ehb: entry('Fetired', 11.1), ehp: entry('Fetired', 8.2), xp: entry('Fetired', 9_800_000) },
-  { team: 'C8B', ehb: entry('C8B', 8.2), ehp: entry('C8B', 6.4), xp: entry('Kappadonn', 900_000) },
+  { team: 'Llama', ehb: entry('A Llama', 12.4), ehp: entry('Llamaboy', 9.8) },
+  { team: 'Fetired', ehb: entry('Fetired', 11.1), ehp: entry('Fetired', 8.2) },
+  { team: 'C8B', ehb: entry('C8B', 8.2), ehp: entry('C8B', 6.4) },
 ];
 
 const codeBlock = (embed) => embed.data.description.split('```')[1].trim();
@@ -24,20 +24,15 @@ const withRows = (n) => loadConfig({ botToken: 't', sheetId: 's', discordChannel
 
 // --- Value formatting --------------------------------------------------------
 
-test('EHB and EHP keep one decimal', () => {
-  assert.equal(formatMetric('ehb', 12.44), '12.4');
-  assert.equal(formatMetric('ehp', 0), '0.0');
-});
-
-test('XP is abbreviated so the column stays narrow', () => {
-  assert.equal(formatMetric('xp', 12_300_000), '12.3M');
-  assert.equal(formatMetric('xp', 900_000), '900K');
-  assert.equal(formatMetric('xp', 450), '450');
+test('values keep one decimal', () => {
+  assert.equal(formatMetric(12.44), '12.4');
+  assert.equal(formatMetric(0), '0.0');
+  assert.equal(formatMetric(1234.56), '1234.6');
 });
 
 test('a missing value renders as a dash, not blank or NaN', () => {
-  assert.equal(formatMetric('ehb', null), '-');
-  assert.equal(formatMetric('xp', undefined), '-');
+  assert.equal(formatMetric(null), '-');
+  assert.equal(formatMetric(undefined), '-');
 });
 
 test('long team names are shown in full, never truncated', () => {
@@ -79,11 +74,11 @@ test('each section is ranked best first, not left in sheet order', () => {
 
 test('each metric is ranked independently of the others', () => {
   const flipped = [
-    { team: 'A', ehb: entry('a', 1), xp: entry('a', 999) },
-    { team: 'B', ehb: entry('b', 9), xp: entry('b', 1) },
+    { team: 'A', ehb: entry('a', 1), ehp: entry('a', 999) },
+    { team: 'B', ehb: entry('b', 9), ehp: entry('b', 1) },
   ];
   assert.equal(rankFor(flipped, 'ehb', 1)[0].team, 'B');
-  assert.equal(rankFor(flipped, 'xp', 1)[0].team, 'A');
+  assert.equal(rankFor(flipped, 'ehp', 1)[0].team, 'A');
 });
 
 test('teams without a value for a metric sink rather than disappear', () => {
@@ -119,9 +114,14 @@ test('has no timestamp of its own: the leaderboard above carries it', () => {
 test('renders one section per metric, inside a code block', () => {
   const embed = buildGainersEmbed(gainers, config, FIXED_NOW);
   assert.ok(embed.data.description.includes('```'));
-  for (const label of ['EHB gained', 'EHP gained', 'XP gained']) {
+  for (const label of ['EHB gained', 'EHP gained']) {
     assert.ok(codeBlock(embed).includes(label), `should contain ${label}`);
   }
+});
+
+test('no XP section is rendered', () => {
+  const embed = buildGainersEmbed(gainers, config, FIXED_NOW);
+  assert.ok(!codeBlock(embed).includes('XP'), codeBlock(embed));
 });
 
 test('there is no repeated column header row', () => {
@@ -131,9 +131,9 @@ test('there is no repeated column header row', () => {
 
 test('real-world team names stay narrow enough to avoid wrapping', () => {
   const real = [
-    { team: 'Pot Arams Winning Gooners', ehb: { player: 'IM AlbinP', value: 66.2 }, xp: { player: 'IM AlbinP', value: 19_200_000 } },
-    { team: 'Euskadi Ta Askatasuna', ehb: { player: 'Neurron', value: 55.4 }, xp: { player: 'Misuli', value: 14_100_000 } },
-    { team: 'Zappers Aint Playin', ehb: { player: 'Ironborn PVM', value: 60.1 }, xp: { player: 'gmg', value: 15_200_000 } },
+    { team: 'Pot Arams Winning Gooners', ehb: { player: 'IM AlbinP', value: 66.2 } },
+    { team: 'Euskadi Ta Askatasuna', ehb: { player: 'Neurron', value: 55.4 } },
+    { team: 'Zappers Aint Playin', ehb: { player: 'Ironborn PVM', value: 60.1 } },
   ];
   const embed = buildGainersEmbed(real, withRows(3), FIXED_NOW);
   assert.ok(widest(embed) <= 55, `expected <=55 chars, got ${widest(embed)}`);
@@ -141,11 +141,11 @@ test('real-world team names stay narrow enough to avoid wrapping', () => {
 
 test('height is bounded by the configured rows per metric', () => {
   const many = Array.from({ length: 20 }, (_, i) => ({
-    team: `Team${i}`, ehb: entry(`P${i}`, 20 - i), ehp: entry(`P${i}`, 20 - i), xp: entry(`P${i}`, 20 - i),
+    team: `Team${i}`, ehb: entry(`P${i}`, 20 - i), ehp: entry(`P${i}`, 20 - i),
   }));
-  // 3 sections x (1 label + N rows) + 2 blank separators
-  assert.equal(lines(buildGainersEmbed(many, withRows(5), FIXED_NOW)).length, 20);
-  assert.equal(lines(buildGainersEmbed(many, withRows(3), FIXED_NOW)).length, 14);
+  // 2 sections x (1 label + N rows) + 1 blank separator
+  assert.equal(lines(buildGainersEmbed(many, withRows(5), FIXED_NOW)).length, 13);
+  assert.equal(lines(buildGainersEmbed(many, withRows(3), FIXED_NOW)).length, 9);
 });
 
 test('has no footer: the leaderboard above already carries one', () => {
@@ -177,9 +177,9 @@ test('contains no emoji, which would break alignment', () => {
 });
 
 test('a metric absent from the sheet is omitted entirely', () => {
-  const noXp = gainers.map(({ team, ehb, ehp }) => ({ team, ehb, ehp }));
-  const block = codeBlock(buildGainersEmbed(noXp, config, FIXED_NOW));
-  assert.ok(!block.includes('XP gained'));
+  const noEhp = gainers.map(({ team, ehb }) => ({ team, ehb }));
+  const block = codeBlock(buildGainersEmbed(noEhp, config, FIXED_NOW));
+  assert.ok(!block.includes('EHP gained'));
   assert.ok(block.includes('EHB gained'));
 });
 
@@ -194,7 +194,6 @@ test('a large sheet stays within the embed description limit', () => {
     team: `LongTeamName${i}`,
     ehb: entry(`LongPlayer${i}`, 100 - i),
     ehp: entry(`LongPlayer${i}`, 90 - i),
-    xp: entry(`LongPlayer${i}`, 50_000_000 - i),
   }));
   const embed = buildGainersEmbed(many, withRows(25), FIXED_NOW);
   assert.ok(embed.data.description.length <= 4096, `was ${embed.data.description.length}`);

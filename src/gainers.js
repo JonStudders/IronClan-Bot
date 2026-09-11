@@ -3,17 +3,19 @@
 const { isSheetError } = require('./sheet');
 
 /**
- * The three "Top X gainer per team" tables that sit side by side below the
+ * The "Top X gainer per team" tables that sit side by side below the
  * leaderboard on the same tab.
  *
  * Their columns are found by reading the sheet's own labels rather than by
  * hardcoded offsets, so inserting a column between the blocks does not
  * silently pair the wrong player with the wrong team.
+ *
+ * The sheet also carries a Top XP gainer table, which is deliberately not
+ * listed: adding it back is one line here.
  */
 const METRICS = [
   { key: 'ehb', label: 'EHB', pattern: /top\s+ehb\s+gainer/i },
   { key: 'ehp', label: 'EHP', pattern: /top\s+ehp\s+gainer/i },
-  { key: 'xp', label: 'XP', pattern: /top\s+xp\s+gainer/i },
 ];
 
 const TEAM_HEADER = /^team\s*name$/i;

@@ -70,8 +70,15 @@ test('rows are padded to a rectangular grid', () => {
 
 // --- Locating the blocks -----------------------------------------------------
 
-test('all three metric blocks are found on the real sheet shape', () => {
-  assert.deepEqual(availableMetrics(realShapeGrid()).map((m) => m.key), ['ehb', 'ehp', 'xp']);
+test('the tracked metric blocks are found on the real sheet shape', () => {
+  assert.deepEqual(availableMetrics(realShapeGrid()).map((m) => m.key), ['ehb', 'ehp']);
+});
+
+test('an XP block in the sheet is present but deliberately not tracked', () => {
+  const grid = realShapeGrid();
+  assert.ok(grid[8].includes('Top XP gainer per team'), 'the fixture still has an XP table');
+  assert.ok(!availableMetrics(grid).some((m) => m.key === 'xp'));
+  assert.ok(parseGainers(grid).every((row) => row.xp === undefined));
 });
 
 test('block columns are read from the sheet labels, not hardcoded', () => {
@@ -99,12 +106,11 @@ test('a missing metric block is simply absent, not an error', () => {
 
 // --- Joining -----------------------------------------------------------------
 
-test('teams carry a player and value for every metric', () => {
+test('teams carry a player and value for every tracked metric', () => {
   const [llama] = parseGainers(realShapeGrid());
   assert.equal(llama.team, 'Llama');
   assert.deepEqual(llama.ehb, { player: 'A Llama', value: 12.4 });
   assert.deepEqual(llama.ehp, { player: 'Llamaboy', value: 9.8 });
-  assert.deepEqual(llama.xp, { player: 'A Llama', value: 12300000 });
 });
 
 test('every team in the block is returned, in sheet order', () => {
@@ -113,20 +119,19 @@ test('every team in the block is returned, in sheet order', () => {
 
 test('blocks are joined by team name, not by row position', () => {
   const grid = realShapeGrid();
-  // Reverse only the XP block, as if the sheet sorted it by its own value.
-  const xpRows = [[20, 23, 26]];
+  // Reverse only the EHP block, as if the sheet sorted it by its own value.
   const teams = ['Llama', 'Fetired', 'C8B'];
-  const players = ['A Llama', 'Fetired', 'Kappadonn'];
-  const values = ['12300000', '9800000', '7400000'];
+  const players = ['Llamaboy', 'Fetired', 'C8B'];
+  const values = ['9.80', '8.20', '6.40'];
   for (let i = 0; i < 3; i++) {
     const row = grid[10 + i];
-    const [t, p, v] = xpRows[0];
-    row[t] = teams[2 - i]; row[p] = players[2 - i]; row[v] = values[2 - i];
+    row[11] = teams[2 - i]; row[14] = players[2 - i]; row[17] = values[2 - i];
   }
 
   const parsed = parseGainers(grid);
   const c8b = parsed.find((r) => r.team === 'C8B');
-  assert.equal(c8b.xp.player, 'Kappadonn', 'C8B must keep its own XP gainer');
+  assert.equal(c8b.ehp.player, 'C8B', 'C8B must keep its own EHP gainer');
+  assert.equal(c8b.ehp.value, 6.4);
   assert.equal(c8b.ehb.player, 'C8B');
 });
 
@@ -148,9 +153,9 @@ test('sheet errors become null values and blank players', () => {
 
 test('thousands separators in the sheet are parsed', () => {
   const grid = realShapeGrid();
-  grid[10][26] = '12,300,000';
+  grid[10][7] = '1,234.50';
   const [llama] = parseGainers(grid);
-  assert.equal(llama.xp.value, 12300000);
+  assert.equal(llama.ehb.value, 1234.5);
 });
 
 test('a grid with no gainer tables returns nothing rather than throwing', () => {

@@ -15,14 +15,10 @@ function fullName(text) {
   return String(text ?? '');
 }
 
-/** XP runs to millions, so abbreviate it; EHB and EHP stay at one decimal. */
-function formatMetric(metricKey, value) {
+/** EHB and EHP are shown to one decimal, matching the sheet. */
+function formatMetric(value) {
   if (value === null || value === undefined) return '-';
-  if (metricKey !== 'xp') return value.toFixed(1);
-  const abs = Math.abs(value);
-  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `${Math.round(value / 1_000)}K`;
-  return String(Math.round(value));
+  return value.toFixed(1);
 }
 
 /**
@@ -61,7 +57,7 @@ function renderSections(gainers, metrics, limit) {
           '|',
           fullName(row.team),
           '|',
-          formatMetric(metric.key, row[metric.key].value),
+          formatMetric(row[metric.key].value),
         ].join(' ').trimEnd())
         .join('\n');
 
