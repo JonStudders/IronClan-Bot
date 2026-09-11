@@ -10,6 +10,7 @@ const { buildEmbed } = require('./embed');
 const { buildGainersEmbed, GAINERS_TITLE } = require('./gainersEmbed');
 const { createStateStore } = require('./state');
 const { createPoster } = require('./poster');
+const { carryForward } = require('./history');
 
 /**
  * Assembles the bot's parts without deciding how it is run.
@@ -41,12 +42,17 @@ function createBot(env = process.env, { log = console } = {}) {
    * The gainer tables are read from the raw grid rather than the parsed sheet,
    * because they sit under blank headers that the row parser drops.
    */
-  async function render({ previousRanks, at }) {
-    const teams = await readTeams();
+  async function render({ previousRanks, lastKnownPoints, at }) {
+    const fresh = await readTeams();
 
-    if (teams.length === 0) {
+    if (fresh.length === 0) {
       throw new Error('No teams found in the sheet - refusing to post an empty leaderboard.');
     }
+
+    // A team whose points cell is momentarily unreadable keeps its previous
+    // score rather than dropping to zero and scrambling the ranking. Applied
+    // before sorting, so the order is right too.
+    const { teams, carried } = carryForward(fresh, lastKnownPoints);
 
     const panels = [{
       key: 'board',
@@ -72,6 +78,8 @@ function createBot(env = process.env, { log = console } = {}) {
       panels,
       teams: sortTeams(teams).slice(0, config.maxTeams),
       teamCount: teams.length,
+      carriedCount: carried,
+      // Still unreadable even after carry-forward: no score has ever been seen.
       unresolvedCount: teams.filter((team) => team.points === null).length,
     };
   }
@@ -89,8 +97,11 @@ function createBot(env = process.env, { log = console } = {}) {
     if (result.leadChanged) {
       lines.push(`  Lead changed: ${result.leader} are now top.`);
     }
+    if (result.carriedCount > 0) {
+      lines.push(`  ${result.carriedCount} team(s) kept their previous points - the sheet was unreadable.`);
+    }
     if (result.unresolvedCount > 0) {
-      lines.push(`  ${result.unresolvedCount} team(s) had no readable points and were shown as zero.`);
+      lines.push(`  ${result.unresolvedCount} team(s) have no score at all yet and were shown as zero.`);
     }
     return lines.join('\n');
   }

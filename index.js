@@ -21,7 +21,15 @@ const bot = createBot();
 const { config, client, state, poster } = bot;
 
 const scheduler = createScheduler({
-  task: async () => console.log(bot.describeUpdate(await poster.update())),
+  task: async () => {
+    // -freeze stops the timer only. An explicit -reload still updates, which
+    // is the point: freeze is for "stop surprising me", not "stop working".
+    if (state.read().frozen) {
+      console.log('Updates are frozen (-unfreeze to resume).');
+      return;
+    }
+    console.log(bot.describeUpdate(await poster.update()));
+  },
   intervalMinutes: config.updateIntervalMinutes,
   retryMinutes: config.retryIntervalMinutes,
   onError: (error) => console.error('Leaderboard update failed:', error),
@@ -33,7 +41,7 @@ client.on(Events.InteractionCreate, createInteractionHandler({ state, poster, co
 // the listener is not attached at all.
 if (config.ownerId) {
   client.on(Events.MessageCreate, createDmHandler({
-    client, config, poster, describeUpdate: bot.describeUpdate,
+    client, config, poster, state, describeUpdate: bot.describeUpdate,
   }));
 } else {
   console.warn('ownerId is not set - developer DM commands are disabled.');

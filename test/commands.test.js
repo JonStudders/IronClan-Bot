@@ -10,10 +10,16 @@ const {
 
 // --- Command definitions -----------------------------------------------------
 
-test('both commands are registered with descriptions', () => {
+test('every command is registered with a description', () => {
   const names = definitions.map((d) => d.name).sort();
-  assert.deepEqual(names, ['bingo-clear', 'bingo-lead']);
+  assert.deepEqual(names, ['bingo-clear', 'bingo-history', 'bingo-lead']);
   assert.ok(definitions.every((d) => d.description.length > 0));
+});
+
+test('the history command is open to everyone', () => {
+  const history = definitions.find((d) => d.name === 'bingo-history');
+  assert.ok(!history.default_member_permissions, 'anyone may look at the history');
+  assert.deepEqual(history.options[0].choices.map((c) => c.value), ['24h', '7d', 'all']);
 });
 
 test('the destructive command requires Manage Messages by default', () => {

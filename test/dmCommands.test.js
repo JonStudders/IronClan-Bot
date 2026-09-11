@@ -257,3 +257,105 @@ test('-help lists every command', async () => {
     assert.ok(message.replies[0].includes(name), `help should mention ${name}`);
   }
 });
+
+// --- Which of the bot's own messages -delete will remove ---------------------
+
+test('-delete removes the bot own plain messages, such as those from -post', async () => {
+  // A -post message carries no embed, so it is chat rather than a panel.
+  const ownPost = { ...chatMessage('own-post'), __board: false };
+  const channel = makeChannel([ownPost]);
+
+  const message = makeMessage({ content: '-delete 5' });
+  await makeHandler({ channel })(message);
+
+  assert.deepEqual(channel.calls.bulk, [1], 'a -post message is deletable');
+  assert.match(message.replies[0], /Deleted 1 message\(s\)/);
+});
+
+test('-delete never removes a leaderboard panel, even to reach the count asked for', async () => {
+  const channel = makeChannel([
+    boardMessage('panel-1'),
+    boardMessage('panel-2'),
+    chatMessage('chat-1'),
+    chatMessage('chat-2'),
+  ]);
+
+  const message = makeMessage({ content: '-delete 4' });
+  await makeHandler({ channel })(message);
+
+  assert.deepEqual(channel.calls.bulk, [2], 'only the two non-panel messages');
+});
+
+// --- -freeze / -unfreeze ------------------------------------------------------
+
+function makeState(initial = {}) {
+  let data = { frozen: false, ...initial };
+  return { read: () => ({ ...data }), write: (next) => { data = { ...next }; }, peek: () => data };
+}
+
+function frozenHandler(state, channel = makeChannel()) {
+  return createDmHandler({
+    client: { channels: { fetch: async () => channel } },
+    config,
+    poster: { isBoard: () => false, update: async () => ({ action: 'reposted', teamCount: 8, panelCount: 2 }) },
+    state,
+    describeUpdate: (r) => `Leaderboard ${r.action}.`,
+    log: SILENT,
+  });
+}
+
+test('-freeze records the freeze so it survives a restart', async () => {
+  const state = makeState();
+  const message = makeMessage({ content: '-freeze' });
+  await frozenHandler(state)(message);
+
+  assert.equal(state.peek().frozen, true, 'persisted, not held in memory');
+  assert.match(message.replies[0], /Frozen/);
+});
+
+test('-unfreeze clears it', async () => {
+  const state = makeState({ frozen: true });
+  const message = makeMessage({ content: '-unfreeze' });
+  await frozenHandler(state)(message);
+
+  assert.equal(state.peek().frozen, false);
+  assert.match(message.replies[0], /Unfrozen/);
+});
+
+test('freezing twice says so rather than pretending to act', async () => {
+  const state = makeState({ frozen: true });
+  const message = makeMessage({ content: '-freeze' });
+  await frozenHandler(state)(message);
+  assert.match(message.replies[0], /Already frozen/);
+});
+
+test('unfreezing when not frozen says so', async () => {
+  const state = makeState({ frozen: false });
+  const message = makeMessage({ content: '-unfreeze' });
+  await frozenHandler(state)(message);
+  assert.match(message.replies[0], /Not frozen/);
+});
+
+test('-reload still works while frozen: freeze stops the timer, not you', async () => {
+  const state = makeState({ frozen: true });
+  const message = makeMessage({ content: '-reload' });
+  await frozenHandler(state)(message);
+
+  assert.match(message.replies[0], /Reloaded/);
+  assert.equal(state.peek().frozen, true, 'and it stays frozen afterwards');
+});
+
+test('freezing preserves the rest of the state', async () => {
+  const state = makeState({ frozen: false, history: [{ at: 't1', points: { A: 1 } }], leader: { teamName: 'A' } });
+  await frozenHandler(state)(makeMessage({ content: '-freeze' }));
+
+  assert.equal(state.peek().history.length, 1, 'history must not be lost');
+  assert.equal(state.peek().leader.teamName, 'A');
+});
+
+test('-help lists the freeze commands', async () => {
+  const message = makeMessage({ content: '-help' });
+  await frozenHandler(makeState())(message);
+  assert.ok(message.replies[0].includes('-freeze'));
+  assert.ok(message.replies[0].includes('-unfreeze'));
+});

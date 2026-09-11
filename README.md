@@ -112,6 +112,7 @@ per-player data the sheet does not currently expose. The footer says
 | Command | Who can use it | What it does |
 | --- | --- | --- |
 | `/bingo-lead` | Anyone | Posts who is leading and when the lead last changed |
+| `/bingo-history` | Anyone | Shows how the points race has developed, as a sparkline per team |
 | `/bingo-clear` | Manage Messages, **or the developer** | Deletes every message in the channel except the boards and pinned messages |
 
 `/bingo-clear` is destructive, so it is gated three ways: the command requires
@@ -128,7 +129,13 @@ ignored in silence, so the commands are not advertised.
     -reload         Force a leaderboard update now
     -delete <n>     Delete the last n messages in the leaderboard channel
     -post <text>    Post text to the leaderboard channel
+    -freeze         Stop the timer updating the board
+    -unfreeze       Resume automatic updates
     -help           List the commands
+
+`-freeze` stops the *timer*, not you: `-reload` still updates while frozen.
+The freeze is written to the state file, so a deploy or a reboot cannot
+silently un-freeze it. `bot doctor` on the server warns if it is set.
 
 `-delete` never touches the leaderboard panels or pinned messages, and messages
 over 14 days old are removed one at a time because Discord refuses to bulk
@@ -148,10 +155,37 @@ Both need something listening on Discord's gateway, so they work under
 
 ## State file
 
-`state.json` (path configurable, gitignored) holds the board message id, the
-previous ranking and the lead history. It is what makes rank arrows survive a
-restart. Losing it costs one update's worth of arrows, never a crash - a
-missing or corrupt file falls back to empty state.
+`state.json` (path configurable, gitignored) holds what the bot remembers
+between runs:
+
+| Field | Purpose |
+| --- | --- |
+| `previousRanks` | Last update's ranking, for the movement arrows |
+| `leader` / `leadChanges` | Who leads, since when, and the history of changes |
+| `history` | A points snapshot per update, for `/bingo-history` |
+| `lastKnownPoints` | Each team's last readable score, for carry-forward |
+| `frozen` | Whether `-freeze` has stopped the timer |
+
+### Carrying a score forward
+
+A cell the sheet cannot resolve - a `#N/A` while a formula recalculates, or a
+blank during an edit - would otherwise drop that team to zero and scramble the
+ranking. Since points only climb during a bingo, the previous value is a far
+better guess, so the last readable score is used instead. It is applied before
+sorting, so the order is right too, and the update log says how many teams
+were carried.
+
+This is not hypothetical: the sheet has returned `#N/A` for every team more
+than once during development.
+
+### History
+
+A snapshot is recorded on each update, skipping ones where nothing moved - so
+quiet periods cost nothing without losing the shape of the race. The file is
+capped at 2000 snapshots, dropping the oldest.
+
+History cannot be reconstructed after the fact, so the earliest data is simply
+the earliest run after this was deployed.
 
 ## Message behaviour
 
@@ -200,6 +234,7 @@ cause and deletes nothing.
     src/state.js        Persists message id, previous ranks and lead history
     src/commands.js     Slash commands (/bingo-lead, /bingo-clear)
     src/dmCommands.js   Developer commands sent to the bot by DM
+    src/history.js      Points history: recording, carry-forward and sparklines
     scripts/            One-shot entry points (manual update, command cleanup)
     deploy/             systemd unit, bootstrap script, and the `bot` command
     docs/               Deployment guide and the open code-review findings

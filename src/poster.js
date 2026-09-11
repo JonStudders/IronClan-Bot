@@ -1,6 +1,7 @@
 'use strict';
 
 const { applyStandings } = require('./state');
+const { recordSnapshot, lastKnownFrom } = require('./history');
 
 /** How far back to look for our own messages. */
 const HISTORY_SCAN_LIMIT = 25;
@@ -37,8 +38,9 @@ function createPoster({ client, config, render, state, now = () => Date.now(), l
   async function update() {
     const saved = state.read();
     const at = now();
-    const { panels, teams, teamCount, unresolvedCount } = await render({
+    const { panels, teams, teamCount, unresolvedCount, carriedCount } = await render({
       previousRanks: saved.previousRanks,
+      lastKnownPoints: saved.lastKnownPoints,
       at,
     });
 
@@ -61,13 +63,20 @@ function createPoster({ client, config, render, state, now = () => Date.now(), l
       await channel.send({ embeds: [panel.embed] });
     }
 
-    const { next, leadChanged } = applyStandings(saved, teams, new Date(at).toISOString());
-    state.write({ ...next, panelCount: panels.length });
+    const timestamp = new Date(at).toISOString();
+    const { next, leadChanged } = applyStandings(saved, teams, timestamp);
+    state.write({
+      ...next,
+      panelCount: panels.length,
+      history: recordSnapshot(saved.history ?? [], teams, timestamp),
+      lastKnownPoints: lastKnownFrom(teams, saved.lastKnownPoints),
+    });
 
     return {
       action: ours.length > 0 ? 'reposted' : 'posted',
       teamCount,
       unresolvedCount,
+      carriedCount,
       panelCount: panels.length,
       removedPrevious: ours.length,
       leadChanged,

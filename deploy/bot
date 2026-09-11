@@ -222,6 +222,9 @@ cmd_doctor() {
   echo
   bold "State"
   local state_file="$APP_DIR/state.json"
+  if [ -f "$state_file" ] && grep -q '"frozen": *true' "$state_file"; then
+    warn "updates are FROZEN - DM the bot '-unfreeze' to resume"
+  fi
   if [ -f "$state_file" ]; then
     ok "state.json exists ($(stat -c '%s' "$state_file") bytes)"
   else

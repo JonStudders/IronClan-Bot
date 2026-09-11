@@ -53,9 +53,12 @@ function helpText() {
     '-delete <n>     Delete the last n messages in the leaderboard channel',
     '                (the leaderboard panels themselves are kept)',
     "-post <text>    Post text to the leaderboard channel",
+    '-freeze         Stop the timer updating the board',
+    '-unfreeze       Resume automatic updates',
     '-help           This list',
     '```',
     'Quotes around `-post` text are optional.',
+    '`-reload` works even while frozen.',
   ].join('\n');
 }
 
@@ -66,9 +69,28 @@ function truncate(text) {
     : `${text.slice(0, DISCORD_MESSAGE_LIMIT - 3)}...`;
 }
 
-function createDmHandler({ client, config, poster, describeUpdate, log = console }) {
+function createDmHandler({ client, config, poster, state, describeUpdate, log = console }) {
   async function leaderboardChannel() {
     return client.channels.fetch(config.channelId);
+  }
+
+  function setFrozen(frozen) {
+    state.write({ ...state.read(), frozen });
+  }
+
+  async function cmdFreeze() {
+    if (state.read().frozen) return 'Already frozen. `-unfreeze` to resume.';
+    setFrozen(true);
+    log.log?.('Updates frozen by the developer.');
+    return 'Frozen. The timer will skip updates until `-unfreeze`.'
+      + ' `-reload` still works if you want a one-off update.';
+  }
+
+  async function cmdUnfreeze() {
+    if (!state.read().frozen) return 'Not frozen - updates are already running.';
+    setFrozen(false);
+    log.log?.('Updates resumed by the developer.');
+    return 'Unfrozen. The next scheduled update will run as normal.';
   }
 
   async function cmdReload() {
@@ -145,6 +167,8 @@ function createDmHandler({ client, config, poster, describeUpdate, log = console
     reload: cmdReload,
     delete: cmdDelete,
     post: cmdPost,
+    freeze: cmdFreeze,
+    unfreeze: cmdUnfreeze,
     help: async () => helpText(),
   };
 

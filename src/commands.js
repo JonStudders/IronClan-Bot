@@ -1,5 +1,6 @@
 'use strict';
 
+const { renderHistory } = require('./history');
 const {
   SlashCommandBuilder,
   PermissionFlagsBits,
@@ -20,6 +21,19 @@ const definitions = [
   new SlashCommandBuilder()
     .setName('bingo-lead')
     .setDescription('Announce who is currently leading the bingo, and when the lead last changed.')
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('bingo-history')
+    .setDescription('Show how the points race has developed over time.')
+    .addStringOption((option) => option
+      .setName('period')
+      .setDescription('How far back to look (default: the whole bingo)')
+      .addChoices(
+        { name: 'Last 24 hours', value: '24h' },
+        { name: 'Last 7 days', value: '7d' },
+        { name: 'Whole bingo', value: 'all' },
+      ))
     .toJSON(),
 
   new SlashCommandBuilder()
@@ -77,6 +91,41 @@ function formatLeadReply(state) {
  */
 async function handleLead(interaction, { state }) {
   await interaction.reply({ content: formatLeadReply(state.read()) });
+}
+
+/** The period option maps to a window in hours; 0 means everything. */
+const PERIODS = { '24h': 24, '7d': 24 * 7, all: 0 };
+
+function formatHistoryReply(state, period = 'all', now = Date.now()) {
+  const hours = PERIODS[period] ?? 0;
+  const result = renderHistory(state.history ?? [], { hours, now });
+
+  if (result.empty) {
+    return `${result.text}
+
+History is recorded on every update, so it fills in as the bingo runs.`;
+  }
+
+  const label = period === 'all' ? 'the whole bingo' : `the last ${period === '24h' ? '24 hours' : '7 days'}`;
+  const lines = [
+    `**Points over ${label}** - ${result.snapshots} snapshots`,
+    '```',
+    result.text,
+    '```',
+  ];
+  if (result.topGain) {
+    lines.push(`Biggest gain: **${result.topGain.name}** (+${result.topGain.gain.toLocaleString('en-GB')})`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * `/bingo-history` - open to everyone. Renders each team's score over time as
+ * a sparkline, scaled across all teams so the rows read as one race.
+ */
+async function handleHistory(interaction, { state }) {
+  const period = interaction.options?.getString?.('period') ?? 'all';
+  await interaction.reply({ content: formatHistoryReply(state.read(), period) });
 }
 
 /**
@@ -227,6 +276,7 @@ function createInteractionHandler(deps) {
 
     try {
       if (interaction.commandName === 'bingo-lead') return await handleLead(interaction, deps);
+      if (interaction.commandName === 'bingo-history') return await handleHistory(interaction, deps);
       if (interaction.commandName === 'bingo-clear') return await handleClear(interaction, deps);
     } catch (error) {
       (deps.log ?? console).error?.(`Command /${interaction.commandName} failed:`, error);
@@ -245,6 +295,8 @@ module.exports = {
   registerCommands,
   createInteractionHandler,
   formatLeadReply,
+  formatHistoryReply,
+  PERIODS,
   partitionByAge,
   selectDeletable,
   explainDeleteFailure,

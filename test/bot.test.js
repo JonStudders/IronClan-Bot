@@ -43,11 +43,13 @@ test('removals, lead changes and unreadable points are each reported', () => {
     leadChanged: true,
     leader: 'Fetired',
     unresolvedCount: 3,
+    carriedCount: 1,
   });
   assert.match(line, /Leaderboard reposted with 8 team\(s\) across 2 message\(s\)\./);
   assert.match(line, /Removed 2 previous message\(s\)\./);
   assert.match(line, /Lead changed: Fetired are now top\./);
-  assert.match(line, /3 team\(s\) had no readable points/);
+  assert.match(line, /1 team\(s\) kept their previous points/);
+  assert.match(line, /3 team\(s\) have no score at all yet/);
 });
 
 test('nothing extra is reported when there is nothing to report', () => {

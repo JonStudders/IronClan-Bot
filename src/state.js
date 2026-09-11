@@ -13,10 +13,13 @@ const path = require('node:path');
  * round of rank arrows, never a crash.
  */
 const EMPTY_STATE = {
-  panelCount: 0,        // how many messages the bot maintained last time
-  previousRanks: {},    // team name -> rank at the previous update
-  leader: null,         // { teamName, since } - since is an ISO timestamp
-  leadChanges: [],      // newest first: { from, to, at }
+  panelCount: 0,         // how many messages the bot maintained last time
+  previousRanks: {},     // team name -> rank at the previous update
+  leader: null,          // { teamName, since } - since is an ISO timestamp
+  leadChanges: [],       // newest first: { from, to, at }
+  history: [],           // oldest first: { at, points: { team: number } }
+  lastKnownPoints: {},   // team name -> last readable score, for carry-forward
+  frozen: false,         // when true, the timer skips updates (-freeze)
 };
 
 const MAX_LEAD_CHANGES = 20;
