@@ -415,3 +415,105 @@ test('-line-test is developer-only like the rest', async () => {
   await frozenHandler(historyState())(message);
   assert.deepEqual(message.replies, []);
 });
+
+// --- -bingo-start --------------------------------------------------------------
+
+/** State holding `snapshots` snapshots, all zero unless `scored`. */
+function preStartState({ snapshots = 40, scored = false, frozen = false } = {}) {
+  let history = [];
+  const now = Date.now();
+  for (let i = 0; i < snapshots; i++) {
+    history.push({
+      at: new Date(now - (snapshots - i) * 600000).toISOString(),
+      points: { Alpha: scored ? (i + 1) * 10 : 0, Bravo: scored ? (i + 1) * 7 : 0 },
+    });
+  }
+  let data = {
+    history,
+    frozen,
+    previousRanks: { Alpha: 1, Bravo: 2 },
+    lastKnownPoints: { Alpha: 400, Bravo: 280 },
+    leader: { teamName: 'Alpha', since: '2026-09-01T00:00:00.000Z' },
+    leadChanges: [{ from: 'Bravo', to: 'Alpha', at: '2026-09-01T00:00:00.000Z' }],
+  };
+  return { read: () => structuredClone(data), write: (next) => { data = structuredClone(next); }, peek: () => data };
+}
+
+function startHandler(state) {
+  return createDmHandler({
+    client: { channels: { fetch: async () => makeChannel() } },
+    config,
+    poster: { isBoard: () => false, update: async () => ({ action: 'reposted', teamCount: 8, panelCount: 2 }) },
+    state,
+    describeUpdate: (r) => `Leaderboard ${r.action} with ${r.teamCount} team(s).`,
+    log: SILENT,
+  });
+}
+
+test('-bingo-start clears everything remembered about the race', async () => {
+  const state = preStartState();
+  const message = makeMessage({ content: '-bingo-start' });
+  await startHandler(state)(message);
+
+  const after = state.peek();
+  assert.deepEqual(after.history, [], 'snapshots gone');
+  assert.deepEqual(after.previousRanks, {}, 'arrows reset');
+  assert.deepEqual(after.lastKnownPoints, {}, 'no stale score carried into the new bingo');
+  assert.equal(after.leader, null);
+  assert.deepEqual(after.leadChanges, []);
+});
+
+test('-bingo-start reposts the board immediately', async () => {
+  const message = makeMessage({ content: '-bingo-start' });
+  await startHandler(preStartState())(message);
+  assert.match(message.replies[0], /Bingo started/);
+  assert.match(message.replies[0], /Leaderboard reposted with 8 team\(s\)/);
+});
+
+test('-bingo-start needs no confirmation while every score is still zero', async () => {
+  const state = preStartState({ snapshots: 200, scored: false });
+  await startHandler(state)(makeMessage({ content: '-bingo-start' }));
+  assert.deepEqual(state.peek().history, [], 'the pre-start case stays one command');
+});
+
+test('-bingo-start refuses to erase real scores without confirmation', async () => {
+  const state = preStartState({ scored: true });
+  const message = makeMessage({ content: '-bingo-start' });
+  await startHandler(state)(message);
+
+  assert.match(message.replies[0], /Run `-bingo-start confirm`/);
+  assert.equal(state.peek().history.length, 40, 'nothing was destroyed');
+});
+
+test('-bingo-start confirm erases real scores when asked plainly', async () => {
+  const state = preStartState({ scored: true });
+  const message = makeMessage({ content: '-bingo-start confirm' });
+  await startHandler(state)(message);
+
+  assert.deepEqual(state.peek().history, []);
+  assert.match(message.replies[0], /Bingo started/);
+});
+
+test('-bingo-start leaves a freeze alone but says so', async () => {
+  const state = preStartState({ frozen: true });
+  const message = makeMessage({ content: '-bingo-start' });
+  await startHandler(state)(message);
+
+  assert.equal(state.peek().frozen, true, 'freezing is a separate decision');
+  assert.match(message.replies[0], /still \*\*frozen\*\*/);
+});
+
+test('-bingo-start is developer-only', async () => {
+  const state = preStartState();
+  const message = makeMessage({ author: STRANGER, content: '-bingo-start' });
+  await startHandler(state)(message);
+
+  assert.deepEqual(message.replies, []);
+  assert.equal(state.peek().history.length, 40, 'a stranger cannot wipe the bingo');
+});
+
+test('-help lists it', async () => {
+  const message = makeMessage({ content: '-help' });
+  await startHandler(preStartState())(message);
+  assert.ok(message.replies[0].includes('-bingo-start'));
+});

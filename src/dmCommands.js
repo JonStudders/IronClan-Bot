@@ -57,6 +57,7 @@ function helpText() {
     '-freeze         Stop the timer updating the board',
     '-unfreeze       Resume automatic updates',
     '-line-test [p]  Points chart as an image, DMed back (p: 24h, 7d, blank=all)',
+    '-bingo-start    Wipe the history and start fresh, as if the bingo just began',
     '-help           This list',
     '```',
     'Quotes around `-post` text are optional.',
@@ -93,6 +94,54 @@ function createDmHandler({ client, config, poster, state, describeUpdate, log = 
     setFrozen(false);
     log.log?.('Updates resumed by the developer.');
     return 'Unfrozen. The next scheduled update will run as normal.';
+  }
+
+  /**
+   * `-bingo-start` - wipe everything remembered about the race and post a
+   * fresh board, as though the bingo had just begun.
+   *
+   * The bot records history from the moment it is deployed, so by the time the
+   * bingo actually starts it has banked days of all-zero snapshots and a
+   * meaningless "leader". This throws those away.
+   *
+   * Erasing history cannot be undone, so it asks for confirmation - but only
+   * once there is something worth losing. Before the bingo starts every score
+   * is zero and there is nothing to protect, so the common case stays a single
+   * command.
+   */
+  async function cmdBingoStart(args) {
+    const saved = state.read();
+    const history = saved.history ?? [];
+    const scored = history.some((snapshot) => Object.values(snapshot.points).some((v) => v > 0));
+
+    if (scored && args.trim().toLowerCase() !== 'confirm') {
+      return `That would erase ${history.length} snapshot(s), and some record real scores -`
+        + ' the whole points history and every rank arrow would go with them.\n'
+        + 'Run `-bingo-start confirm` if you really mean it.';
+    }
+
+    state.write({
+      ...saved,
+      history: [],
+      previousRanks: {},
+      lastKnownPoints: {},
+      leader: null,
+      leadChanges: [],
+    });
+    log.log?.(`Bingo restarted by the developer: cleared ${history.length} snapshot(s).`);
+
+    const result = await poster.update();
+    const lines = [
+      `Bingo started. Cleared ${history.length} snapshot(s), the rank history and the lead record.`,
+      '```',
+      describeUpdate(result),
+      '```',
+      'Every team will show NEW until the next update gives them something to move against.',
+    ];
+    if (saved.frozen) {
+      lines.push('Note: updates are still **frozen** - `-unfreeze` when you want the timer running.');
+    }
+    return lines.join('\n');
   }
 
   /** Windows accepted by -line-test, matching the /bingo-history choices. */
@@ -200,6 +249,7 @@ function createDmHandler({ client, config, poster, state, describeUpdate, log = 
     freeze: cmdFreeze,
     unfreeze: cmdUnfreeze,
     'line-test': cmdLineTest,
+    'bingo-start': cmdBingoStart,
     help: async () => helpText(),
   };
 

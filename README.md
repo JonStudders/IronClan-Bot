@@ -132,7 +132,19 @@ ignored in silence, so the commands are not advertised.
     -freeze         Stop the timer updating the board
     -unfreeze       Resume automatic updates
     -line-test [p]  Points chart as a PNG, DMed back (p: 24h, 7d, blank=all)
+    -bingo-start    Wipe the history and start fresh, as if the bingo just began
     -help           List the commands
+
+`-bingo-start` throws away everything the bot remembers about the race - the
+snapshots, the rank arrows, the lead record and the carried-forward scores -
+then reposts the board. The bot records history from the moment it is deployed,
+so by the time a bingo actually begins it has banked days of all-zero snapshots
+and a meaningless "leader"; this clears them.
+
+Erasing history cannot be undone, so it asks for confirmation - but only once
+there is something worth losing. While every recorded score is still zero there
+is nothing to protect and it runs straight away; once real scores exist it
+requires `-bingo-start confirm`.
 
 `-line-test` renders the points history as a line chart and DMs the image back
 rather than posting it, so the rendering can be iterated on without the channel
