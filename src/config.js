@@ -13,6 +13,15 @@ function parseToggle(value, fallback = true) {
   return !['off', 'false', 'no', '0', 'none'].includes(raw);
 }
 
+/**
+ * A Discord timestamp is Unix seconds. Anything else is dropped rather than
+ * interpolated into the embed, where a typo would render as broken markup.
+ */
+function timestamp(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? String(parsed) : '';
+}
+
 function positiveNumber(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -38,7 +47,8 @@ function loadConfig(env = {}) {
     // Per-event settings, so a new bingo is a config edit not a code edit.
     title: env.bingoTitle || 'Iron Clan Bingo',
     leaderboardUrl: env.leaderboardUrl || '',
-    endTimestamp: env.bingoEndTimestamp || '',
+    startTimestamp: timestamp(env.bingoStartTimestamp),
+    endTimestamp: timestamp(env.bingoEndTimestamp),
     thumbnailUrl: env.thumbnailUrl || '',
     embedColour: env.embedColour || '#6B8E23', // olive green
     credit: env.credit || 'BlancoIron',
@@ -63,4 +73,4 @@ function validateConfig(config) {
   return config;
 }
 
-module.exports = { loadConfig, validateConfig, parseToggle, REQUIRED_SETTINGS, MAX_EMBED_FIELDS };
+module.exports = { loadConfig, validateConfig, parseToggle, timestamp, REQUIRED_SETTINGS, MAX_EMBED_FIELDS };

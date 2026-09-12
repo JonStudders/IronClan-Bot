@@ -72,6 +72,12 @@ the team above.
 Rank movement reads `▲2` / `▼1` / `─` for held position, and `NEW` for a team
 the bot has not seen before.
 
+The description carries **one** countdown, which switches over on its own:
+`Starts: in 6 days` until `bingoStartTimestamp` passes, then
+`Ends: in 3 days` from `bingoEndTimestamp`. Showing both at once is noise.
+Either can be omitted; a value that is not Unix seconds is dropped rather than
+rendered as broken markup.
+
 ### 2. Top gainers
 
 The leading individual players for each tracked metric - currently **EHB and

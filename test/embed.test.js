@@ -182,3 +182,61 @@ test('no code block is rendered any more', () => {
   const { data } = buildEmbed(teams, config, FIXED_NOW, PREVIOUS);
   assert.ok(!data.description.includes('```'));
 });
+
+// --- The countdown switches from start to end ---------------------------------
+
+const { countdownLine } = require('../src/embed');
+
+const START = '1789776000';  // 19 Sep 2026 01:00 BST
+const END = '1790539200';    // 27 Sep 2026 21:00 BST
+
+const dated = loadConfig({
+  botToken: 't', sheetId: 's', discordChannelId: 'c',
+  bingoStartTimestamp: START, bingoEndTimestamp: END,
+});
+
+test('before the bingo starts, the board counts down to the start', () => {
+  const line = countdownLine(dated, Date.UTC(2026, 8, 12, 12, 0, 0));
+  assert.equal(line, `Starts: <t:${START}:R>`);
+});
+
+test('once it has started, the board counts down to the end instead', () => {
+  const line = countdownLine(dated, Date.UTC(2026, 8, 22, 12, 0, 0));
+  assert.equal(line, `Ends: <t:${END}:R>`);
+});
+
+test('the switch happens exactly at the start, not a tick early', () => {
+  const start = Number(START) * 1000;
+  assert.match(countdownLine(dated, start - 1000), /^Starts:/);
+  assert.match(countdownLine(dated, start), /^Ends:/, 'at the moment it starts, it has started');
+});
+
+test('after the end it keeps showing the end rather than reverting', () => {
+  assert.match(countdownLine(dated, Date.UTC(2026, 9, 1, 12, 0, 0)), /^Ends:/);
+});
+
+test('with no start configured the behaviour is unchanged', () => {
+  const endOnly = loadConfig({ botToken: 't', sheetId: 's', discordChannelId: 'c', bingoEndTimestamp: END });
+  assert.equal(countdownLine(endOnly, Date.UTC(2026, 8, 12)), `Ends: <t:${END}:R>`);
+});
+
+test('with neither configured there is no countdown line at all', () => {
+  const bare = loadConfig({ botToken: 't', sheetId: 's', discordChannelId: 'c' });
+  assert.equal(countdownLine(bare, Date.now()), null);
+});
+
+test('a malformed timestamp is dropped rather than rendered as broken markup', () => {
+  for (const bad of ['next tuesday', '19/09/2026', '', '-5', '12.5']) {
+    const config = loadConfig({
+      botToken: 't', sheetId: 's', discordChannelId: 'c', bingoStartTimestamp: bad, bingoEndTimestamp: END,
+    });
+    assert.equal(config.startTimestamp, '', `"${bad}" should not survive validation`);
+    assert.match(countdownLine(config, Date.UTC(2026, 8, 12)), /^Ends:/);
+  }
+});
+
+test('the start line appears in the rendered description', () => {
+  const { data } = buildEmbed(teams, dated, Date.UTC(2026, 8, 12, 12, 0, 0), {});
+  assert.match(data.description, new RegExp(`Starts: <t:${START}:R>`));
+  assert.ok(!data.description.includes('Ends:'), 'only one countdown at a time');
+});

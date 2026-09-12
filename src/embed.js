@@ -31,10 +31,24 @@ function relativeTimestamp(seconds) {
   return `<t:${seconds}:R>`;
 }
 
+/**
+ * Before the bingo begins, the deadline people care about is the start; once it
+ * has, it is the end. Showing both at once is noise, so the line switches over
+ * on its own when the start passes.
+ */
+function countdownLine(config, now) {
+  const nowSeconds = Math.floor(now / 1000);
+
+  if (config.startTimestamp && Number(config.startTimestamp) > nowSeconds) {
+    return `Starts: ${relativeTimestamp(config.startTimestamp)}`;
+  }
+  return config.endTimestamp ? `Ends: ${relativeTimestamp(config.endTimestamp)}` : null;
+}
+
 function buildDescription(config, now) {
   return [
     config.leaderboardUrl ? `Public Leaderboard: ${config.leaderboardUrl}` : null,
-    config.endTimestamp ? `Ends: ${relativeTimestamp(config.endTimestamp)}` : null,
+    countdownLine(config, now),
     `Last Updated: ${relativeTimestamp(Math.floor(now / 1000))}`,
   ]
     .filter(Boolean)
@@ -86,6 +100,7 @@ function buildEmbed(teams, config, now = Date.now(), previousRanks = {}) {
 module.exports = {
   buildEmbed,
   buildDescription,
+  countdownLine,
   toRows,
   formatPoints,
   formatPercentage,

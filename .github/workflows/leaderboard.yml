@@ -26,6 +26,7 @@ env:
   sheetName: Leaderboard
   bingoTitle: Iron Clan Bingo - Autumn 2026
   leaderboardUrl: https://bit.ly/4osZatV
+  bingoStartTimestamp: '1789776000'
   bingoEndTimestamp: '1790539200'
   thumbnailUrl: https://i.imgur.com/i59D7Uy.png
   embedColour: '#6B8E23'
