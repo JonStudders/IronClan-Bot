@@ -21,6 +21,13 @@ const PREFIX = '-';
 
 /** Discord refuses to fetch more than 100 messages in one call. */
 const MAX_DELETE = 100;
+
+/**
+ * -clear pages through history 100 at a time. This caps a single run at 5,000
+ * messages, so a runaway loop - or a channel far bigger than expected - cannot
+ * hold the bot in a rate-limited delete for hours.
+ */
+const MAX_CLEAR_PAGES = 50;
 const DISCORD_MESSAGE_LIMIT = 2000;
 
 /** `-post 'hello there'` -> `hello there`. Quotes are optional. */
@@ -58,6 +65,7 @@ function helpText() {
     '-unfreeze       Resume automatic updates',
     '-line-test [p]  Points chart as an image, DMed back (p: 24h, 7d, blank=all)',
     '-bingo-start    Wipe the history and start fresh, as if the bingo just began',
+    '-clear          Delete EVERY message in the channel, then repost the board',
     '-help           This list',
     '```',
     'Quotes around `-post` text are optional.',
@@ -141,6 +149,107 @@ function createDmHandler({ client, config, poster, state, describeUpdate, log = 
     if (saved.frozen) {
       lines.push('Note: updates are still **frozen** - `-unfreeze` when you want the timer running.');
     }
+    return lines.join('\n');
+  }
+
+  /**
+   * `-clear` - attempt to delete every message in the leaderboard channel,
+   * pinned ones and the board included, then repost the board.
+   *
+   * Pages backwards through the whole history rather than stopping at the
+   * 100 messages Discord returns per call. Recent messages go in bulk; anything
+   * over 14 days old has to be deleted one at a time, which Discord rate limits,
+   * so a long history can take minutes.
+   *
+   * Deleting other people's messages needs Manage Messages. If that is refused -
+   * missing permission, or 2FA not enabled on the owner's account - there is no
+   * point asking again for every remaining message, so it carries on removing
+   * only the bot's own and reports what it had to skip.
+   */
+  async function cmdClear(args, message) {
+    if (args.trim().toLowerCase() !== 'confirm') {
+      return 'This will attempt to delete **every** message in the leaderboard channel - '
+        + 'other people\'s, pinned ones and the board itself - and cannot be undone. '
+        + 'The board is reposted afterwards.\nRun `-clear confirm` to go ahead.';
+    }
+
+    await message?.reply('Clearing the channel - this can take a while if the history is long...');
+
+    const channel = await leaderboardChannel();
+    const failures = new Set();
+    let before;
+    let deleted = 0;
+    let skipped = 0;
+    let pages = 0;
+    let ownOnly = false;
+
+    const isPermissionError = (error) => error?.code === 50013 || error?.code === 60003;
+
+    async function deleteOne(target) {
+      try {
+        await target.delete();
+        deleted += 1;
+      } catch (error) {
+        failures.add(explainDeleteFailure(error));
+        if (isPermissionError(error)) ownOnly = true;
+      }
+    }
+
+    while (pages < MAX_CLEAR_PAGES) {
+      const page = await channel.messages.fetch({ limit: MAX_DELETE, ...(before ? { before } : {}) });
+      const messages = [...page.values()];
+      if (messages.length === 0) break;
+
+      pages += 1;
+      // Newest first, so the last message is the oldest: page from there. Older
+      // pages are unaffected by deleting this one.
+      before = messages[messages.length - 1].id;
+
+      const { bulk, individual } = partitionByAge(messages, Date.now());
+
+      if (!ownOnly && bulk.length > 0) {
+        try {
+          deleted += (await channel.bulkDelete(bulk, true)).size;
+        } catch (error) {
+          failures.add(explainDeleteFailure(error));
+          if (isPermissionError(error)) {
+            ownOnly = true;
+          }
+          individual.push(...bulk);
+        }
+      } else {
+        individual.push(...bulk);
+      }
+
+      for (const target of individual) {
+        if (ownOnly && !poster.isOwnMessage(target)) {
+          skipped += 1;
+          continue;
+        }
+        await deleteOne(target);
+      }
+    }
+
+    log.log?.(`DM -clear: removed ${deleted} message(s), skipped ${skipped}.`);
+
+    const lines = [`Deleted ${deleted} message(s).`];
+    if (skipped > 0) {
+      lines.push(`Skipped ${skipped} from other people - Discord refused permission to delete them.`);
+    }
+    if (failures.size > 0) {
+      lines.push(`Problems: ${[...failures].join(' ')}`);
+    }
+    if (pages >= MAX_CLEAR_PAGES) {
+      lines.push(`Stopped after ${MAX_CLEAR_PAGES * MAX_DELETE} messages - run \`-clear confirm\` again for the rest.`);
+    }
+
+    try {
+      const result = await poster.update();
+      lines.push(`Board reposted: ${describeUpdate(result)}`);
+    } catch (error) {
+      lines.push(`The board could not be reposted: ${error.message}. Try \`-reload\`.`);
+    }
+
     return lines.join('\n');
   }
 
@@ -250,6 +359,7 @@ function createDmHandler({ client, config, poster, state, describeUpdate, log = 
     unfreeze: cmdUnfreeze,
     'line-test': cmdLineTest,
     'bingo-start': cmdBingoStart,
+    clear: cmdClear,
     help: async () => helpText(),
   };
 
@@ -286,7 +396,8 @@ function createDmHandler({ client, config, poster, state, describeUpdate, log = 
       }
 
       // A handler may return text, or a payload with an attachment.
-      const result = await handler(command.args);
+      // The message is passed too, so a long-running command can reply early.
+      const result = await handler(command.args, message);
       await message.reply(typeof result === 'string' ? truncate(result) : result);
     } catch (error) {
       log.error?.('DM command failed:', error);
@@ -295,4 +406,4 @@ function createDmHandler({ client, config, poster, state, describeUpdate, log = 
   };
 }
 
-module.exports = { createDmHandler, parseCommand, stripQuotes, helpText, PREFIX, MAX_DELETE };
+module.exports = { createDmHandler, parseCommand, stripQuotes, helpText, PREFIX, MAX_DELETE, MAX_CLEAR_PAGES };

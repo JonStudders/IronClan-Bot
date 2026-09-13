@@ -139,6 +139,7 @@ ignored in silence, so the commands are not advertised.
     -unfreeze       Resume automatic updates
     -line-test [p]  Points chart as a PNG, DMed back (p: 24h, 7d, blank=all)
     -bingo-start    Wipe the history and start fresh, as if the bingo just began
+    -clear          Delete EVERY message in the channel, then repost the board
     -help           List the commands
 
 `-bingo-start` throws away everything the bot remembers about the race - the
@@ -151,6 +152,18 @@ Erasing history cannot be undone, so it asks for confirmation - but only once
 there is something worth losing. While every recorded score is still zero there
 is nothing to protect and it runs straight away; once real scores exist it
 requires `-bingo-start confirm`.
+
+`-clear` attempts to delete **every** message in the leaderboard channel -
+other people's, pinned ones and the board itself - then reposts the board. It
+needs `-clear confirm`. It pages through the whole history rather than stopping
+at Discord's 100-per-fetch limit, and caps a single run at 5,000 messages.
+Anything over 14 days old must be deleted one at a time, which Discord rate
+limits, so a long history takes a while; the bot replies when it starts.
+
+If Discord refuses to delete other people's messages - no Manage Messages, or
+2FA not enabled on the bot owner's account - it stops asking for those after
+the first refusal and carries on removing only its own, then reports how many
+it had to skip and why.
 
 `-line-test` renders the points history as a line chart and DMs the image back
 rather than posting it, so the rendering can be iterated on without the channel

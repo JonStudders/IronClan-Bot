@@ -517,3 +517,167 @@ test('-help lists it', async () => {
   await startHandler(preStartState())(message);
   assert.ok(message.replies[0].includes('-bingo-start'));
 });
+
+// --- -clear -------------------------------------------------------------------
+
+const { MAX_CLEAR_PAGES } = require('../src/dmCommands');
+const DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * A channel that behaves like Discord's for paging: newest first, at most
+ * `limit` per fetch, `before` excludes anything newer. `denyOthers` makes it
+ * refuse to delete messages the bot did not write, as a missing Manage Messages
+ * permission or the 2FA requirement would.
+ */
+function historyChannel(count, { oldFrom = Infinity, denyOthers = false, pinnedEvery = 0 } = {}) {
+  const calls = { bulk: 0, single: 0 };
+  const store = [];
+  for (let i = count; i >= 1; i--) {
+    const message = {
+      id: String(i),
+      author: { id: i % 3 === 0 ? 'BOT' : 'SOMEONE' },
+      pinned: pinnedEvery > 0 && i % pinnedEvery === 0,
+      createdTimestamp: Date.now() - (i <= count - oldFrom ? 20 * DAY : 60000),
+      deleted: false,
+      delete: async () => {
+        if (denyOthers && message.author.id !== 'BOT') {
+          const error = new Error('Two factor is required'); error.code = 60003; throw error;
+        }
+        calls.single += 1;
+        message.deleted = true;
+      },
+    };
+    store.push(message);
+  }
+
+  return {
+    calls,
+    remaining: () => store.filter((m) => !m.deleted),
+    messages: {
+      fetch: async ({ limit, before }) => {
+        const page = store
+          .filter((m) => !m.deleted && (before === undefined || Number(m.id) < Number(before)))
+          .slice(0, limit);
+        return new Map(page.map((m) => [m.id, m]));
+      },
+    },
+    bulkDelete: async (list) => {
+      if (denyOthers) {
+        const error = new Error('Two factor is required'); error.code = 60003; throw error;
+      }
+      calls.bulk += 1;
+      list.forEach((m) => { m.deleted = true; });
+      return new Map(list.map((m) => [m.id, m]));
+    },
+  };
+}
+
+function clearHandler(channel, { updateError } = {}) {
+  let updates = 0;
+  const handler = createDmHandler({
+    client: { channels: { fetch: async () => channel } },
+    config,
+    poster: {
+      isBoard: () => false,
+      isOwnMessage: (m) => m.author?.id === 'BOT',
+      update: async () => {
+        updates += 1;
+        if (updateError) throw updateError;
+        return { action: 'posted', teamCount: 8, panelCount: 2 };
+      },
+    },
+    state: { read: () => ({}), write: () => {} },
+    describeUpdate: (r) => `Leaderboard ${r.action}.`,
+    log: SILENT,
+  });
+  handler.updates = () => updates;
+  return handler;
+}
+
+const finalReply = (message) => message.replies[message.replies.length - 1];
+
+test('-clear without confirm deletes nothing and explains', async () => {
+  const channel = historyChannel(10);
+  const message = makeMessage({ content: '-clear' });
+  await clearHandler(channel)(message);
+
+  assert.match(message.replies[0], /Run `-clear confirm`/);
+  assert.equal(channel.remaining().length, 10);
+});
+
+test('-clear confirm removes every message, across many pages', async () => {
+  const channel = historyChannel(250); // three pages of 100
+  const message = makeMessage({ content: '-clear confirm' });
+  await clearHandler(channel)(message);
+
+  assert.equal(channel.remaining().length, 0, 'nothing left, not just the first 100');
+  assert.match(finalReply(message), /Deleted 250 message\(s\)/);
+});
+
+test('-clear takes pinned messages too, since it means every message', async () => {
+  const channel = historyChannel(20, { pinnedEvery: 4 });
+  await clearHandler(channel)(makeMessage({ content: '-clear confirm' }));
+  assert.equal(channel.remaining().length, 0);
+});
+
+test('-clear says it has started before doing slow work', async () => {
+  const message = makeMessage({ content: '-clear confirm' });
+  await clearHandler(historyChannel(5))(message);
+  assert.match(message.replies[0], /Clearing the channel/);
+  assert.ok(message.replies.length >= 2, 'a progress reply, then the result');
+});
+
+test('-clear deletes messages over 14 days old one at a time', async () => {
+  const channel = historyChannel(30, { oldFrom: 10 }); // the oldest 20 are old
+  await clearHandler(channel)(makeMessage({ content: '-clear confirm' }));
+
+  assert.equal(channel.remaining().length, 0);
+  assert.equal(channel.calls.single, 20, 'bulk delete refuses anything that old');
+});
+
+test('-clear reposts the board afterwards', async () => {
+  const handler = clearHandler(historyChannel(5));
+  const message = makeMessage({ content: '-clear confirm' });
+  await handler(message);
+
+  assert.equal(handler.updates(), 1);
+  assert.match(finalReply(message), /Board reposted/);
+});
+
+test('-clear still reports what it deleted when the repost fails', async () => {
+  const message = makeMessage({ content: '-clear confirm' });
+  await clearHandler(historyChannel(5), { updateError: new Error('sheet is down') })(message);
+
+  assert.match(finalReply(message), /Deleted 5 message\(s\)/);
+  assert.match(finalReply(message), /could not be reposted: sheet is down/);
+});
+
+test('-clear falls back to the bot\u2019s own messages when permission is refused', async () => {
+  const channel = historyChannel(30, { denyOthers: true });
+  const message = makeMessage({ content: '-clear confirm' });
+  await clearHandler(channel)(message);
+
+  const left = channel.remaining();
+  assert.ok(left.every((m) => m.author.id !== 'BOT'), 'every one of its own messages is gone');
+  assert.equal(left.length, 20, "other people's messages remain");
+  assert.match(finalReply(message), /Skipped 20/);
+  assert.match(finalReply(message), /two-factor/);
+});
+
+test('-clear stops at its page cap instead of looping forever', async () => {
+  const channel = historyChannel(MAX_CLEAR_PAGES * 100 + 50);
+  const message = makeMessage({ content: '-clear confirm' });
+  await clearHandler(channel)(message);
+
+  assert.equal(channel.remaining().length, 50);
+  assert.match(finalReply(message), /run `-clear confirm` again/);
+});
+
+test('-clear is developer-only', async () => {
+  const channel = historyChannel(10);
+  const message = makeMessage({ author: STRANGER, content: '-clear confirm' });
+  await clearHandler(channel)(message);
+
+  assert.deepEqual(message.replies, []);
+  assert.equal(channel.remaining().length, 10);
+});
