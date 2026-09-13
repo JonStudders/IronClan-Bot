@@ -77,7 +77,7 @@ function renderSections(gainers, metrics, limit) {
  * showing the true clan-wide top three would need per-player data the sheet
  * does not currently publish.
  */
-function buildGainersEmbed(gainers, config) {
+function buildGainersEmbed(gainers, config, { accent } = {}) {
   const metrics = METRICS.filter((metric) => gainers.some((row) => row[metric.key]));
   const sections = metrics.length === 0 ? '' : renderSections(gainers, metrics, config.gainersRows);
 
@@ -86,7 +86,7 @@ function buildGainersEmbed(gainers, config) {
     : ['```', sections, '```'].join('\n');
 
   return new EmbedBuilder()
-    .setColor(config.embedColour)
+    .setColor(accent ?? config.embedColour)
     .setTitle(GAINERS_TITLE)
     // No timestamp and no footer: the leaderboard sits directly above and
     // carries both, so repeating them here is just noise.

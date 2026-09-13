@@ -10,7 +10,7 @@ const { buildEmbed } = require('./embed');
 const { buildGainersEmbed, GAINERS_TITLE } = require('./gainersEmbed');
 const { createStateStore } = require('./state');
 const { createPoster } = require('./poster');
-const { loadColourLookup } = require('./teamColours');
+const { loadColourLookup, leaderColour } = require('./teamColours');
 const { carryForward } = require('./history');
 
 /**
@@ -33,6 +33,8 @@ function createBot(env = process.env, { log = console } = {}) {
   });
   const state = createStateStore({ filePath: config.stateFile, log });
 
+  const colourFor = loadColourLookup({ log });
+
   const readTeams = createSheetReader(config);
   const readGrid = createGridReader(config);
 
@@ -54,11 +56,16 @@ function createBot(env = process.env, { log = console } = {}) {
     // score rather than dropping to zero and scrambling the ranking. Applied
     // before sorting, so the order is right too.
     const { teams, carried } = carryForward(fresh, lastKnownPoints);
+    const sorted = sortTeams(teams);
+
+    // Both embeds wear the leading team's colour. With no real leader - nobody
+    // has scored, or a dead heat - they keep the configured colour instead.
+    const accent = leaderColour(sorted, colourFor) ?? config.embedColour;
 
     const panels = [{
       key: 'board',
       title: config.title,
-      embed: buildEmbed(teams, config, at, previousRanks),
+      embed: buildEmbed(teams, config, at, previousRanks, { accent }),
     }];
 
     if (config.showGainers) {
@@ -68,7 +75,7 @@ function createBot(env = process.env, { log = console } = {}) {
         panels.push({
           key: 'gainers',
           title: GAINERS_TITLE,
-          embed: buildGainersEmbed(gainers, config),
+          embed: buildGainersEmbed(gainers, config, { accent }),
         });
       } catch (error) {
         log.warn?.('Could not read top gainers, posting the leaderboard alone:', error.message);
@@ -77,7 +84,8 @@ function createBot(env = process.env, { log = console } = {}) {
 
     return {
       panels,
-      teams: sortTeams(teams).slice(0, config.maxTeams),
+      teams: sorted.slice(0, config.maxTeams),
+      accent,
       teamCount: teams.length,
       carriedCount: carried,
       // Still unreadable even after carry-forward: no score has ever been seen.
@@ -106,8 +114,6 @@ function createBot(env = process.env, { log = console } = {}) {
     }
     return lines.join('\n');
   }
-
-  const colourFor = loadColourLookup({ log });
 
   return { config, client, state, poster, render, describeUpdate, colourFor };
 }

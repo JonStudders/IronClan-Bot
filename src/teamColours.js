@@ -55,4 +55,25 @@ function loadColourLookup({ file = DEFAULT_FILE, log = console } = {}) {
   }
 }
 
-module.exports = { createColourLookup, loadColourLookup, normaliseName };
+/**
+ * The colour of the team in first place, for tinting the embeds - or null when
+ * there is no meaningful leader to tint for.
+ *
+ * Two cases have no leader worth showing: nobody has scored yet (before the
+ * start, when every team is on zero and "first" is just sheet order), and a
+ * dead heat, where points and completion are both level and the order between
+ * them is arbitrary. The caller falls back to the configured colour for those.
+ */
+function leaderColour(sortedTeams, colourFor) {
+  const [leader, runnerUp] = sortedTeams;
+  if (!leader || !(leader.points > 0)) return null;
+
+  const deadHeat = runnerUp
+    && runnerUp.points === leader.points
+    && (runnerUp.completion ?? 0) === (leader.completion ?? 0);
+  if (deadHeat) return null;
+
+  return colourFor(leader);
+}
+
+module.exports = { createColourLookup, loadColourLookup, leaderColour, normaliseName };

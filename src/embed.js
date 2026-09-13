@@ -70,9 +70,9 @@ function toRows(teams, previousRanks, maxTeams) {
  * The leaderboard embed: one field per team, showing medal or rank, movement
  * arrow, points, completion bar and the gap to the team above.
  */
-function buildEmbed(teams, config, now = Date.now(), previousRanks = {}) {
+function buildEmbed(teams, config, now = Date.now(), previousRanks = {}, { accent } = {}) {
   const embed = new EmbedBuilder()
-    .setColor(config.embedColour)
+    .setColor(accent ?? config.embedColour)
     .setTitle(config.title)
     .setDescription(buildDescription(config, now))
     .setFooter({ text: `Made by: ${config.credit}` });

@@ -119,6 +119,13 @@ captain match wins. Matching ignores case and extra spaces. It is a committed
 file rather than `.env`, so changing a colour is an edit and a push - the
 deploy picks it up with no change on the server.
 
+Both embeds - the leaderboard and Top Gainers - take the **leading team's
+colour**, so the side bar changes as the lead changes. They fall back to
+`embedColour` (olive green) whenever there is no leader worth showing: before
+anyone has scored, when first place is just sheet order, and in a dead heat
+where points and completion are both level. A team split from second place by
+completion alone still counts as leading, matching the medal it wears.
+
 The line chart draws every team in its own colour. Colour follows the team, not
 its rank, so a team keeps its colour when positions change. A team missing from
 the file takes a fallback colour; an invalid colour is ignored with a warning

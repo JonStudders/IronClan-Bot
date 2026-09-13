@@ -219,3 +219,60 @@ test('the committed file gives every current captain a valid colour', () => {
     assert.match(colourFor({ captain }) ?? '', /^#[0-9a-f]{6}$/, captain);
   }
 });
+
+// --- Embed colour follows the leader ---------------------------------------------
+
+const { leaderColour } = require('../src/teamColours');
+const { buildEmbed } = require('../src/embed');
+const { buildGainersEmbed } = require('../src/gainersEmbed');
+const { loadConfig } = require('../src/config');
+
+const lookup = createColourLookup({ 'A Llama': '#f86501', Fetired: '#8e0edf' });
+const llama = (points, completion = 0.5) => ({ teamName: 'Llama', captain: 'A Llama', points, completion });
+const fetired = (points, completion = 0.5) => ({ teamName: 'Fetired', captain: 'Fetired', points, completion });
+
+test('the leader\'s colour is used once someone has scored', () => {
+  assert.equal(leaderColour([llama(300), fetired(120)], lookup), '#f86501');
+});
+
+test('the colour changes hands when the lead does', () => {
+  assert.equal(leaderColour([fetired(310), llama(300)], lookup), '#8e0edf');
+});
+
+test('before anyone scores there is no leader colour', () => {
+  assert.equal(leaderColour([llama(0), fetired(0)], lookup), null, 'all zero, first is just sheet order');
+  assert.equal(leaderColour([llama(null), fetired(null)], lookup), null);
+});
+
+test('a dead heat has no leader colour', () => {
+  assert.equal(leaderColour([llama(300, 0.5), fetired(300, 0.5)], lookup), null);
+});
+
+test('level points split by completion still has a leader, matching the medal', () => {
+  assert.equal(leaderColour([llama(300, 0.6), fetired(300, 0.5)], lookup), '#f86501');
+});
+
+test('a leader without a configured colour has no leader colour', () => {
+  const stranger = { teamName: 'Mystery', captain: 'Nobody', points: 999, completion: 0.5 };
+  assert.equal(leaderColour([stranger, llama(10)], lookup), null);
+});
+
+test('a lone team that has scored is the leader', () => {
+  assert.equal(leaderColour([llama(5)], lookup), '#f86501');
+});
+
+const embedConfig = loadConfig({ botToken: 't', sheetId: 's', discordChannelId: 'c' });
+
+test('both embeds take the accent colour when given one', () => {
+  const board = buildEmbed([llama(300)], embedConfig, Date.now(), {}, { accent: '#f86501' });
+  const gainers = buildGainersEmbed([], embedConfig, { accent: '#f86501' });
+  assert.equal(board.data.color, 0xf86501);
+  assert.equal(gainers.data.color, 0xf86501);
+});
+
+test('both embeds fall back to the configured colour without an accent', () => {
+  const board = buildEmbed([llama(300)], embedConfig, Date.now(), {});
+  const gainers = buildGainersEmbed([], embedConfig);
+  assert.equal(board.data.color, 0x6b8e23, 'olive green');
+  assert.equal(gainers.data.color, 0x6b8e23);
+});
