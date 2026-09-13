@@ -41,7 +41,7 @@ client.on(Events.InteractionCreate, createInteractionHandler({ state, poster, co
 // the listener is not attached at all.
 if (config.ownerId) {
   client.on(Events.MessageCreate, createDmHandler({
-    client, config, poster, state, describeUpdate: bot.describeUpdate,
+    client, config, poster, state, describeUpdate: bot.describeUpdate, colourFor: bot.colourFor,
   }));
 } else {
   console.warn('ownerId is not set - developer DM commands are disabled.');

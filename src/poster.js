@@ -70,6 +70,9 @@ function createPoster({ client, config, render, state, now = () => Date.now(), l
       panelCount: panels.length,
       history: recordSnapshot(saved.history ?? [], teams, timestamp),
       lastKnownPoints: lastKnownFrom(teams, saved.lastKnownPoints),
+      // History is keyed by team name but colours by captain, so remember who
+      // captains each team.
+      captains: Object.fromEntries(teams.map((team) => [team.teamName, team.captain])),
     });
 
     return {

@@ -1,0 +1,13 @@
+{
+  "_note": "Team colours for the current bingo. Keyed by captain because team names are not decided yet; a team name works as a key too once they are. Matching ignores case and extra spaces. Edit and push - the deploy picks it up.",
+  "colours": {
+    "A Llama": "#f86501",
+    "Fetired": "#8e0edf",
+    "Bamblebog": "#f5c505",
+    "C8B": "#df5b98",
+    "Misuli": "#2cab2b",
+    "e r e": "#1e67cb",
+    "CAPTAIN PEWW": "#c83939",
+    "C0RAZON": "#d0d0cd"
+  }
+}

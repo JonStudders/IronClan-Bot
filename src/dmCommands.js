@@ -80,7 +80,9 @@ function truncate(text) {
     : `${text.slice(0, DISCORD_MESSAGE_LIMIT - 3)}...`;
 }
 
-function createDmHandler({ client, config, poster, state, describeUpdate, log = console }) {
+function createDmHandler({
+  client, config, poster, state, describeUpdate, colourFor = () => null, log = console,
+}) {
   async function leaderboardChannel() {
     return client.channels.fetch(config.channelId);
   }
@@ -268,7 +270,10 @@ function createDmHandler({ client, config, poster, state, describeUpdate, log = 
 
     const hours = CHART_PERIODS[key];
     const label = hours === 24 ? 'the last 24 hours' : hours ? 'the last 7 days' : 'the whole bingo';
-    const png = renderPointsChart(state.read().history ?? [], { hours, title: `Points over ${label}` });
+    const saved = state.read();
+    const png = renderPointsChart(saved.history ?? [], {
+      hours, title: `Points over ${label}`, colourFor, captains: saved.captains,
+    });
 
     if (!png) {
       return 'Not enough history to draw a line yet - two snapshots are needed,'

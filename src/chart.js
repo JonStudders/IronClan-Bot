@@ -21,11 +21,17 @@ const TEXT_PRIMARY = '#ffffff';
 const TEXT_SECONDARY = '#c3c2b7';
 const GRID = '#2f2f2d';
 
-/** Categorical slots 1-6, dark steps. Assigned in order, never cycled. */
+/**
+ * Fallback for a team with no colour in team-colours.json: categorical slots
+ * 1-6, dark steps, assigned in order and never cycled.
+ */
 const SERIES_COLOURS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300'];
 
-/** Past this, hues stop being separable - fold the rest away instead. */
-const MAX_SERIES = SERIES_COLOURS.length;
+/**
+ * Lines drawn at most. Team colours are identities the clan chose, so every
+ * team with one is drawn; teams without one are limited by the fallback slots.
+ */
+const MAX_SERIES = 8;
 
 /** Drawn at this multiple and averaged down, which is what smooths the lines. */
 const SUPERSAMPLE = 2;
@@ -58,31 +64,44 @@ function shortTime(iso) {
 }
 
 /**
- * Builds one series per team from the history, best first, capped so the hues
- * stay distinguishable.
+ * Builds one series per team from the history, best first.
+ *
+ * Each team wears its own colour when team-colours.json has one - colour
+ * follows the team, never its rank, so a team keeps its colour as positions
+ * change. A team without one takes the next fallback slot; once those run out
+ * it is left off rather than given a made-up hue.
  */
-function toSeries(history, maxSeries = MAX_SERIES) {
+function toSeries(history, { maxSeries = MAX_SERIES, colourFor = () => null, captains = {} } = {}) {
   const latest = history[history.length - 1];
-  return Object.keys(latest.points)
-    .sort((a, b) => latest.points[b] - latest.points[a])
-    .slice(0, maxSeries)
-    .map((name, index) => ({
-      name,
-      colour: SERIES_COLOURS[index],
-      values: seriesFor(history, name),
-    }))
-    .filter((series) => series.values.length > 1);
+  const fallback = [...SERIES_COLOURS];
+  const series = [];
+
+  const names = Object.keys(latest.points).sort((a, b) => latest.points[b] - latest.points[a]);
+  for (const name of names) {
+    if (series.length >= maxSeries) break;
+
+    const values = seriesFor(history, name);
+    if (values.length < 2) continue;
+
+    const colour = colourFor({ teamName: name, captain: captains[name] }) ?? fallback.shift();
+    if (!colour) continue;
+
+    series.push({ name, colour, values });
+  }
+  return series;
 }
 
 /**
  * Renders the chart. Returns a PNG buffer, or null when there is not yet
  * enough history to draw a line.
  */
-function renderPointsChart(history, { hours = 0, now = Date.now(), title = 'Points over time' } = {}) {
+function renderPointsChart(history, {
+  hours = 0, now = Date.now(), title = 'Points over time', colourFor, captains,
+} = {}) {
   const period = withinPeriod(history, hours, now);
   if (period.length < 2) return null;
 
-  const series = toSeries(period);
+  const series = toSeries(period, { colourFor, captains });
   if (series.length === 0) return null;
 
   const all = series.flatMap((s) => s.values);

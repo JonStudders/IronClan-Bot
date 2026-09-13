@@ -99,11 +99,17 @@ test('axis steps are round numbers', () => {
 
 // --- Series ------------------------------------------------------------------
 
-test('series are taken best first and capped so hues stay distinct', () => {
+test('without team colours, series stop when the fallback hues run out', () => {
   const names = Array.from({ length: 12 }, (_, i) => `Team${i}`);
   const series = toSeries(buildHistory(20, names));
-  assert.equal(series.length, MAX_SERIES);
+  assert.equal(series.length, SERIES_COLOURS.length, 'no made-up seventh hue');
   assert.equal(series[0].name, 'Team0', 'the leader comes first');
+});
+
+test('teams with their own colour are all drawn, up to the cap', () => {
+  const names = Array.from({ length: 12 }, (_, i) => `Team${i}`);
+  const series = toSeries(buildHistory(20, names), { colourFor: () => '#123456' });
+  assert.equal(series.length, MAX_SERIES);
 });
 
 test('colours are assigned in fixed slot order, never cycled', () => {
@@ -144,4 +150,72 @@ test('a period restricts the chart to that window', () => {
   const day = renderPointsChart(history, { now: NOW, hours: 24 });
   assert.ok(all && day);
   assert.notDeepEqual(all, day, 'a narrower window draws a different chart');
+});
+
+// --- Team colours ---------------------------------------------------------------
+
+const { createColourLookup, loadColourLookup } = require('../src/teamColours');
+
+test('a team wears its own colour, found through its captain', () => {
+  const colourFor = createColourLookup({ 'A Llama': '#f86501' });
+  const series = toSeries(buildHistory(10, ['Llama']), {
+    colourFor, captains: { Llama: 'A Llama' },
+  });
+  assert.equal(series[0].colour, '#f86501');
+});
+
+test('colour follows the team, not its rank', () => {
+  const colourFor = createColourLookup({ Alpha: '#111111', Bravo: '#222222' });
+  let history = [];
+  history = recordSnapshot(history, [{ teamName: 'Alpha', points: 10 }, { teamName: 'Bravo', points: 5 }], 't1');
+  history = recordSnapshot(history, [{ teamName: 'Alpha', points: 11 }, { teamName: 'Bravo', points: 50 }], 't2');
+
+  const series = toSeries(history, { colourFor });
+  assert.equal(series[0].name, 'Bravo', 'Bravo overtook');
+  assert.equal(series[0].colour, '#222222', 'and kept its own colour rather than the leader slot');
+  assert.equal(series[1].colour, '#111111');
+});
+
+test('a team with no configured colour takes a fallback slot', () => {
+  const colourFor = createColourLookup({ Alpha: '#111111' });
+  const series = toSeries(buildHistory(10, ['Alpha', 'Unknown']), { colourFor });
+  assert.equal(series.find((s) => s.name === 'Alpha').colour, '#111111');
+  assert.equal(series.find((s) => s.name === 'Unknown').colour, SERIES_COLOURS[0]);
+});
+
+test('captain matching ignores case and extra spaces', () => {
+  const colourFor = createColourLookup({ 'CAPTAIN PEWW': '#c83939', 'C0RAZON': '#d0d0cd' });
+  assert.equal(colourFor({ captain: '  captain   peww ' }), '#c83939');
+  assert.equal(colourFor({ captain: 'C0RAZON  ' }), '#d0d0cd');
+});
+
+test('a team name works as a key once names are decided', () => {
+  const colourFor = createColourLookup({ 'Big Bald Cunts': '#f86501' });
+  assert.equal(colourFor({ teamName: 'Big Bald Cunts', captain: 'Calapox' }), '#f86501');
+});
+
+test('a captain match wins over a team name match', () => {
+  const colourFor = createColourLookup({ Fetired: '#8e0edf', Llama: '#000000' });
+  assert.equal(colourFor({ teamName: 'Llama', captain: 'Fetired' }), '#8e0edf');
+});
+
+test('an invalid colour is ignored with a warning rather than breaking startup', () => {
+  const warnings = [];
+  const colourFor = createColourLookup({ Alpha: 'orange', Bravo: '#22222' }, { log: { warn: (m) => warnings.push(m) } });
+  assert.equal(colourFor({ captain: 'Alpha' }), null);
+  assert.equal(colourFor({ captain: 'Bravo' }), null);
+  assert.equal(warnings.length, 2);
+});
+
+test('a missing colours file means no colours, not a crash', () => {
+  const colourFor = loadColourLookup({ file: 'does-not-exist.json', log: { warn() {} } });
+  assert.equal(colourFor({ captain: 'A Llama' }), null);
+});
+
+test('the committed file gives every current captain a valid colour', () => {
+  const colourFor = loadColourLookup({ log: { warn: (m) => assert.fail(m) } });
+  const captains = ['A Llama', 'Fetired', 'Bamblebog', 'C8B', 'Misuli', 'e r e', 'CAPTAIN PEWW', 'C0RAZON'];
+  for (const captain of captains) {
+    assert.match(colourFor({ captain }) ?? '', /^#[0-9a-f]{6}$/, captain);
+  }
 });

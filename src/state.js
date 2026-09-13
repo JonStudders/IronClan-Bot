@@ -20,6 +20,7 @@ const EMPTY_STATE = {
   history: [],           // oldest first: { at, points: { team: number } }
   lastKnownPoints: {},   // team name -> last readable score, for carry-forward
   frozen: false,         // when true, the timer skips updates (-freeze)
+  captains: {},          // team name -> captain, so the chart can find team colours
 };
 
 const MAX_LEAD_CHANGES = 20;

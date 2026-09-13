@@ -111,6 +111,25 @@ one of them can appear. Showing genuine clan-wide top threes would need
 per-player data the sheet does not currently expose. The footer says
 `one entry per team` to make this explicit.
 
+## Team colours
+
+Each team's colour lives in [team-colours.json](team-colours.json), keyed by
+captain while team names are undecided. A team name works as a key too, and a
+captain match wins. Matching ignores case and extra spaces. It is a committed
+file rather than `.env`, so changing a colour is an edit and a push - the
+deploy picks it up with no change on the server.
+
+The line chart draws every team in its own colour. Colour follows the team, not
+its rank, so a team keeps its colour when positions change. A team missing from
+the file takes a fallback colour; an invalid colour is ignored with a warning
+rather than stopping the bot.
+
+These are the clan's chosen colours, so they are used as given, but two pairs
+are hard to tell apart on a chart where lines cross: blue (`e r e`) and purple
+(`Fetired`) for colour-blind readers, and red (`CAPTAIN PEWW`) and pink (`C8B`)
+for anyone. Every line is labelled by name beside a swatch, which is what keeps
+the chart readable regardless.
+
 ## Commands
 
 ### Slash commands (in the server)

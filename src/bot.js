@@ -10,6 +10,7 @@ const { buildEmbed } = require('./embed');
 const { buildGainersEmbed, GAINERS_TITLE } = require('./gainersEmbed');
 const { createStateStore } = require('./state');
 const { createPoster } = require('./poster');
+const { loadColourLookup } = require('./teamColours');
 const { carryForward } = require('./history');
 
 /**
@@ -106,7 +107,9 @@ function createBot(env = process.env, { log = console } = {}) {
     return lines.join('\n');
   }
 
-  return { config, client, state, poster, render, describeUpdate };
+  const colourFor = loadColourLookup({ log });
+
+  return { config, client, state, poster, render, describeUpdate, colourFor };
 }
 
 module.exports = { createBot };
