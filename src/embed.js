@@ -82,13 +82,12 @@ function buildEmbed(teams, config, now = Date.now(), previousRanks = {}, { accen
   }
 
   for (const row of toRows(teams, previousRanks, config.maxTeams)) {
-    // Teams are named by their captain, which keeps each line short. While
-    // team names are undecided the sheet repeats the captain as the team name
-    // ("Fetired - Fetired"), so showing both wastes the width twice over. A
-    // team with no captain falls back to its name rather than going unnamed.
-    const captains = [row.team.captain, row.team.coCaptain].filter(Boolean).join(' & ');
-    const name = `${medal(row.rank)} ${captains || row.team.teamName}`
-      + `  ${formatRankChange(row.change)}`;
+    // "Pewky Blinders - CAPTAIN PEWW": the team, then its captain alone. The
+    // co-captain is left off because two names plus the arrow wrap the field on
+    // a phone. Either half may be missing, so the separator only appears when
+    // there is something on both sides of it.
+    const title = [row.team.teamName, row.team.captain].filter(Boolean).join(' - ');
+    const name = `${medal(row.rank)} ${title}  ${formatRankChange(row.change)}`;
 
     const value = `**${formatNumber(row.team.points)}** pts · ${progressBar(row.team.completion)} `
       + `${formatPercentage(row.team.completion)} · ${formatGap(row.gap)}`;

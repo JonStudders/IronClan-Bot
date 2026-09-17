@@ -59,17 +59,17 @@ the channel.
 
 ### 1. The leaderboard
 
-One embed, deleted and reposted on each update. A team is named by its captain
-rather than its team name: while team names are undecided the sheet repeats the
-captain as the name ("Fetired - Fetired"), so showing both only spends the width
-twice. A team with no captain falls back to its team name. Each line then shows
-a medal or rank number, movement since the previous update, points, a completion
-bar and the gap to the team above.
+One embed, deleted and reposted on each update. The title line is the team
+followed by its captain — the co-captain is left off, because two names plus the
+movement arrow wrap the field on a phone. Either half may be missing, and the
+separator only appears when there is something on both sides of it. Each line
+then shows a medal or rank number, movement since the previous update, points, a
+completion bar and the gap to the team above.
 
-    🥇 A Llama  ▲2
+    🥇 Pewky Blinders - CAPTAIN PEWW  ▲2
     1,240 pts · ████████░░ 78.00% · in the lead
 
-    🥈 Fetired & Seaman Pend  ▼1
+    🥈 Fetired - Fetired  ▼1
     1,180 pts · ███████░░░ 71.00% · 60 behind
 
 Rank movement reads `▲2` / `▼1` / `─` for held position, and `NEW` for a team
