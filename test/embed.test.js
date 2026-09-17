@@ -113,7 +113,13 @@ test('rank movement arrows reflect the previous update', () => {
   const { data } = buildEmbed(teams, config, FIXED_NOW, PREVIOUS);
   assert.match(data.fields[0].name, /▲1/, 'Bravo climbed from 2nd to 1st');
   assert.match(data.fields[1].name, /▼1/, 'Alpha dropped from 1st to 2nd');
-  assert.match(data.fields[2].name, /─/, 'Solo held 3rd');
+  assert.equal(data.fields[2].name, '🥉 Solo - Cap4', 'Solo held 3rd, so carries no marker');
+});
+
+test('a line with no movement has no trailing whitespace', () => {
+  const held = [{ teamName: 'Solo', captain: 'Cap4', coCaptain: '', points: 10, completion: 0.1 }];
+  const { data } = buildEmbed(held, config, FIXED_NOW, { Solo: 1 });
+  assert.equal(data.fields[0].name, data.fields[0].name.trimEnd());
 });
 
 test('a team seen for the first time is marked NEW', () => {

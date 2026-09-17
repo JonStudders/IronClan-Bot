@@ -72,8 +72,9 @@ completion bar and the gap to the team above.
     🥈 Fetired - Fetired  ▼1
     1,180 pts · ███████░░░ 71.00% · 60 behind
 
-Rank movement reads `▲2` / `▼1` / `─` for held position, and `NEW` for a team
-the bot has not seen before.
+Rank movement reads `▲2` / `▼1`, or `NEW` for a team the bot has not seen
+before. Holding position carries no marker at all — it is the default state, and
+before the bingo starts every team is level, so a full column of them is noise.
 
 The description carries **one** countdown, which switches over on its own:
 `Starts: in 6 days` until `bingoStartTimestamp` passes, then

@@ -87,7 +87,9 @@ function buildEmbed(teams, config, now = Date.now(), previousRanks = {}, { accen
     // a phone. Either half may be missing, so the separator only appears when
     // there is something on both sides of it.
     const title = [row.team.teamName, row.team.captain].filter(Boolean).join(' - ');
-    const name = `${medal(row.rank)} ${title}  ${formatRankChange(row.change)}`;
+    // A held position formats as empty, so trim rather than leave the two
+    // spaces that would otherwise hang off the end of every line.
+    const name = `${medal(row.rank)} ${title}  ${formatRankChange(row.change)}`.trimEnd();
 
     const value = `**${formatNumber(row.team.points)}** pts · ${progressBar(row.team.completion)} `
       + `${formatPercentage(row.team.completion)} · ${formatGap(row.gap)}`;

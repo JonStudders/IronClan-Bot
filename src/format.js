@@ -50,12 +50,15 @@ function rankChange(teamName, currentRank, previousRanks) {
   return { direction: 'same', places: 0 };
 }
 
+// Holding position is the default state, so it earns no marker: before the
+// bingo starts every team is level and a column of `─` is just noise. Only
+// movement, or a team appearing for the first time, is worth a glyph.
 function formatRankChange(change) {
   switch (change.direction) {
     case 'up': return `▲${change.places}`;
     case 'down': return `▼${change.places}`;
     case 'new': return 'NEW';
-    default: return '─';
+    default: return '';
   }
 }
 

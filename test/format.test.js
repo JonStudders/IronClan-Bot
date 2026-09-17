@@ -75,6 +75,6 @@ test('a team we have not seen before is new, not unmoved', () => {
 test('movement arrows read correctly', () => {
   assert.equal(formatRankChange({ direction: 'up', places: 2 }), '▲2');
   assert.equal(formatRankChange({ direction: 'down', places: 1 }), '▼1');
-  assert.equal(formatRankChange({ direction: 'same', places: 0 }), '─');
+  assert.equal(formatRankChange({ direction: 'same', places: 0 }), '', 'holding position is unmarked');
   assert.equal(formatRankChange({ direction: 'new', places: 0 }), 'NEW');
 });
