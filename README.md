@@ -59,14 +59,17 @@ the channel.
 
 ### 1. The leaderboard
 
-One embed, edited in place. Each team shows a medal or rank number, its captain,
-its movement since the previous update, points, a completion bar and the gap to
-the team above.
+One embed, deleted and reposted on each update. A team is named by its captain
+rather than its team name: while team names are undecided the sheet repeats the
+captain as the name ("Fetired - Fetired"), so showing both only spends the width
+twice. A team with no captain falls back to its team name. Each line then shows
+a medal or rank number, movement since the previous update, points, a completion
+bar and the gap to the team above.
 
-    🥇 Llama - A Llama  ▲2
+    🥇 A Llama  ▲2
     1,240 pts · ████████░░ 78.00% · in the lead
 
-    🥈 Fetired - Fetired & Seaman Pend  ▼1
+    🥈 Fetired & Seaman Pend  ▼1
     1,180 pts · ███████░░░ 71.00% · 60 behind
 
 Rank movement reads `▲2` / `▼1` / `─` for held position, and `NEW` for a team
