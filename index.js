@@ -35,7 +35,9 @@ const scheduler = createScheduler({
   onError: (error) => console.error('Leaderboard update failed:', error),
 });
 
-client.on(Events.InteractionCreate, createInteractionHandler({ state, poster, config }));
+client.on(Events.InteractionCreate, createInteractionHandler({
+  state, poster, config, colourFor: bot.colourFor,
+}));
 
 // Developer commands over DM. Without an owner id there is nobody to obey, so
 // the listener is not attached at all.

@@ -94,6 +94,21 @@ const GLYPHS = {
   '/': '....#/...#./...#./..#../.#.../.#.../#....',
   '?': '.###./#...#/....#/...#./..#../...../..#..',
   '!': '..#../..#../..#../..#../..#../...../..#..',
+  '&': '.##../#..#./#..#./.##../#.#.#/#..#./.##.#',
+};
+
+/**
+ * Characters that are a typographic variant of one the font already has.
+ * Team names are typed in Google Sheets, which silently turns a straight
+ * apostrophe into a curly one, so "Llama's" arrived here as "Llama?s" until
+ * these were folded. Folding is one entry per variant rather than one glyph
+ * per variant, since they should not look different at 5x7 anyway.
+ */
+const FOLD = {
+  '‘': "'", '’': "'", 'ʼ': "'",
+  '“': "'", '”': "'", '"': "'",
+  '–': '-', '—': '-', '−': '-',
+  ' ': ' ',
 };
 
 const GLYPH_WIDTH = 5;
@@ -106,7 +121,7 @@ const compiled = new Map();
 function glyph(char) {
   if (compiled.has(char)) return compiled.get(char);
 
-  const source = GLYPHS[char] ?? GLYPHS['?'];
+  const source = GLYPHS[char] ?? GLYPHS[FOLD[char]] ?? GLYPHS['?'];
   const rows = source.split('/').map((row) => [...row].map((cell) => cell === '#'));
   compiled.set(char, rows);
   return rows;

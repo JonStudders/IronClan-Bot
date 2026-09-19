@@ -3,8 +3,8 @@
 ## Bingo Leaderboard
 
 Maintains a leaderboard embed in a designated channel, pulling team data from a public
-Google Sheet. The bot posts once and then **edits that same message** on each refresh,
-so the channel isn't notified every update.
+Google Sheet. On each refresh the bot **deletes its own previous messages and reposts**,
+so the board always sits at the bottom of the channel rather than scrolling away.
 
 ![enter image description here](https://i.imgur.com/eDov723.png)
 
@@ -149,6 +149,7 @@ the chart readable regardless.
 | --- | --- | --- |
 | `/bingo-lead` | Anyone | Posts who is leading and when the lead last changed |
 | `/bingo-history` | Anyone | Shows how the points race has developed, as a sparkline per team |
+| `/bingo-graph` | Anyone | The same race drawn as a line chart, rendered to a PNG |
 | `/bingo-clear` | Manage Messages, **or the developer** | Deletes every message in the channel except the boards and pinned messages |
 
 `/bingo-clear` is destructive, so it is gated three ways: the command requires
@@ -167,7 +168,7 @@ ignored in silence, so the commands are not advertised.
     -post <text>    Post text to the leaderboard channel
     -freeze         Stop the timer updating the board
     -unfreeze       Resume automatic updates
-    -line-test [p]  Points chart as a PNG, DMed back (p: 24h, 7d, blank=all)
+    -line-test [p]  Points chart DMed back, as /bingo-graph (p: 24h, 7d, blank=all)
     -bingo-start    Wipe the history and start fresh, as if the bingo just began
     -clear          Delete EVERY message in the channel, then repost the board
     -help           List the commands
@@ -195,9 +196,16 @@ If Discord refuses to delete other people's messages - no Manage Messages, or
 the first refusal and carries on removing only its own, then reports how many
 it had to skip and why.
 
-`-line-test` renders the points history as a line chart and DMs the image back
-rather than posting it, so the rendering can be iterated on without the channel
-seeing every attempt. It is the prototype for a public `/bingo-history-line`.
+`-line-test` DMs back exactly the chart `/bingo-graph` posts, plus the file size.
+Both go through `buildChartReply` in `src/chart.js`, so the private command used
+to check a rendering change cannot drift from the one everybody else sees.
+
+The chart is a slash command rather than a third message in the channel. The
+poster deletes and reposts its panel on every update, so a standing chart
+message would mean re-uploading a PNG every ten minutes — around 1,150 uploads
+across an eight-day bingo, for a picture that barely moves between ticks — and
+would double what the repost cycle has to get right. A command costs nothing
+when nobody runs it.
 
 `-freeze` stops the *timer*, not you: `-reload` still updates while frozen.
 The freeze is written to the state file, so a deploy or a reboot cannot
@@ -298,7 +306,7 @@ cause and deletes nothing.
     src/bot.js          Assembles the parts, shared by both entry points
     src/scheduler.js    Repeating run loop with retry-on-failure backoff
     src/state.js        Persists message id, previous ranks and lead history
-    src/commands.js     Slash commands (/bingo-lead, /bingo-clear)
+    src/commands.js     Slash commands (/bingo-lead, /bingo-graph, /bingo-clear)
     src/dmCommands.js   Developer commands sent to the bot by DM
     src/history.js      Points history: recording, carry-forward and sparklines
     src/png.js          Dependency-free PNG canvas and bitmap font

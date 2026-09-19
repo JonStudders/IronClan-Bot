@@ -210,4 +210,46 @@ function renderPointsChart(history, {
   return encodePng(downsample(canvas, SUPERSAMPLE));
 }
 
-module.exports = { renderPointsChart, toSeries, niceStep, SERIES_COLOURS, MAX_SERIES };
+/** The windows the chart can be asked for. 0 means the whole bingo. */
+const CHART_PERIODS = { '24h': 24, '7d': 24 * 7, all: 0 };
+
+function periodLabel(hours) {
+  if (hours === 24) return 'the last 24 hours';
+  if (hours) return 'the last 7 days';
+  return 'the whole bingo';
+}
+
+/**
+ * The chart as a Discord message payload, or a plain string explaining why
+ * there is no chart yet. Shared by `/bingo-graph` and the `-line-test` DM so
+ * the published command and the one used to debug it cannot drift apart.
+ */
+function buildChartReply(saved, period, colourFor = () => null) {
+  const hours = CHART_PERIODS[period] ?? 0;
+  const label = periodLabel(hours);
+
+  const png = renderPointsChart(saved.history ?? [], {
+    hours, title: `Points over ${label}`, colourFor, captains: saved.captains,
+  });
+
+  if (!png) {
+    return 'Not enough history to draw a line yet - two snapshots are needed,'
+      + ' and they are recorded one per update.';
+  }
+
+  return {
+    content: `Points over ${label}`,
+    files: [{ attachment: png, name: 'bingo-history.png' }],
+  };
+}
+
+module.exports = {
+  renderPointsChart,
+  buildChartReply,
+  toSeries,
+  niceStep,
+  periodLabel,
+  CHART_PERIODS,
+  SERIES_COLOURS,
+  MAX_SERIES,
+};

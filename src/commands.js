@@ -1,6 +1,7 @@
 'use strict';
 
 const { renderHistory } = require('./history');
+const { buildChartReply } = require('./chart');
 const {
   SlashCommandBuilder,
   PermissionFlagsBits,
@@ -26,6 +27,19 @@ const definitions = [
   new SlashCommandBuilder()
     .setName('bingo-history')
     .setDescription('Show how the points race has developed over time.')
+    .addStringOption((option) => option
+      .setName('period')
+      .setDescription('How far back to look (default: the whole bingo)')
+      .addChoices(
+        { name: 'Last 24 hours', value: '24h' },
+        { name: 'Last 7 days', value: '7d' },
+        { name: 'Whole bingo', value: 'all' },
+      ))
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('bingo-graph')
+    .setDescription('Draw the points race as a line graph.')
     .addStringOption((option) => option
       .setName('period')
       .setDescription('How far back to look (default: the whole bingo)')
@@ -126,6 +140,21 @@ History is recorded on every update, so it fills in as the bingo runs.`;
 async function handleHistory(interaction, { state }) {
   const period = interaction.options?.getString?.('period') ?? 'all';
   await interaction.reply({ content: formatHistoryReply(state.read(), period) });
+}
+
+/**
+ * `/bingo-graph` - open to everyone, the same race as `/bingo-history` but
+ * drawn rather than spelled out in sparklines.
+ *
+ * The reply is deferred because rendering a PNG and uploading it can outrun
+ * Discord's three-second window on a cold interaction.
+ */
+async function handleGraph(interaction, { state, colourFor }) {
+  const period = interaction.options?.getString?.('period') ?? 'all';
+  await interaction.deferReply();
+
+  const reply = buildChartReply(state.read(), period, colourFor);
+  await interaction.editReply(typeof reply === 'string' ? { content: reply } : reply);
 }
 
 /**
@@ -277,6 +306,7 @@ function createInteractionHandler(deps) {
     try {
       if (interaction.commandName === 'bingo-lead') return await handleLead(interaction, deps);
       if (interaction.commandName === 'bingo-history') return await handleHistory(interaction, deps);
+      if (interaction.commandName === 'bingo-graph') return await handleGraph(interaction, deps);
       if (interaction.commandName === 'bingo-clear') return await handleClear(interaction, deps);
     } catch (error) {
       (deps.log ?? console).error?.(`Command /${interaction.commandName} failed:`, error);
@@ -296,6 +326,7 @@ module.exports = {
   createInteractionHandler,
   formatLeadReply,
   formatHistoryReply,
+  handleGraph,
   PERIODS,
   partitionByAge,
   selectDeletable,

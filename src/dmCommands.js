@@ -1,7 +1,7 @@
 'use strict';
 
 const { partitionByAge, explainDeleteFailure } = require('./commands');
-const { renderPointsChart } = require('./chart');
+const { buildChartReply, CHART_PERIODS } = require('./chart');
 
 /**
  * Developer commands, sent to the bot as a direct message.
@@ -63,7 +63,7 @@ function helpText() {
     "-post <text>    Post text to the leaderboard channel",
     '-freeze         Stop the timer updating the board',
     '-unfreeze       Resume automatic updates',
-    '-line-test [p]  Points chart as an image, DMed back (p: 24h, 7d, blank=all)',
+    '-line-test [p]  Points chart DMed back, as /bingo-graph (p: 24h, 7d, blank=all)',
     '-bingo-start    Wipe the history and start fresh, as if the bingo just began',
     '-clear          Delete EVERY message in the channel, then repost the board',
     '-help           This list',
@@ -255,35 +255,23 @@ function createDmHandler({
     return lines.join('\n');
   }
 
-  /** Windows accepted by -line-test, matching the /bingo-history choices. */
-  const CHART_PERIODS = { '24h': 24, '7d': 24 * 7, all: 0, '': 0 };
-
   /**
-   * `-line-test` - the points chart as a PNG, DMed back rather than posted, so
-   * the rendering can be iterated on without the channel seeing every attempt.
+   * `-line-test` - the same chart `/bingo-graph` publishes, DMed back instead
+   * of posted. It shares the builder so debugging here cannot drift from what
+   * the channel sees, and adds the file size, which matters when iterating on
+   * the rendering but is noise for everyone else.
    */
   async function cmdLineTest(args) {
-    const key = args.trim().toLowerCase();
+    const key = args.trim().toLowerCase() || 'all';
     if (!(key in CHART_PERIODS)) {
       return `Unknown period "${args}". Use 24h, 7d, or leave it blank for the whole bingo.`;
     }
 
-    const hours = CHART_PERIODS[key];
-    const label = hours === 24 ? 'the last 24 hours' : hours ? 'the last 7 days' : 'the whole bingo';
-    const saved = state.read();
-    const png = renderPointsChart(saved.history ?? [], {
-      hours, title: `Points over ${label}`, colourFor, captains: saved.captains,
-    });
+    const reply = buildChartReply(state.read(), key, colourFor);
+    if (typeof reply === 'string') return reply;
 
-    if (!png) {
-      return 'Not enough history to draw a line yet - two snapshots are needed,'
-        + ' and they are recorded one per update.';
-    }
-
-    return {
-      content: `Points over ${label} (${(png.length / 1024).toFixed(1)} KB)`,
-      files: [{ attachment: png, name: 'bingo-history.png' }],
-    };
+    const bytes = reply.files[0].attachment.length;
+    return { ...reply, content: `${reply.content} (${(bytes / 1024).toFixed(1)} KB)` };
   }
 
   async function cmdReload() {

@@ -12,8 +12,14 @@ const {
 
 test('every command is registered with a description', () => {
   const names = definitions.map((d) => d.name).sort();
-  assert.deepEqual(names, ['bingo-clear', 'bingo-history', 'bingo-lead']);
+  assert.deepEqual(names, ['bingo-clear', 'bingo-graph', 'bingo-history', 'bingo-lead']);
   assert.ok(definitions.every((d) => d.description.length > 0));
+});
+
+test('the graph command is open to everyone, with the same periods as the history', () => {
+  const graph = definitions.find((d) => d.name === 'bingo-graph');
+  assert.ok(!graph.default_member_permissions, 'anyone may look at the graph');
+  assert.deepEqual(graph.options[0].choices.map((c) => c.value), ['24h', '7d', 'all']);
 });
 
 test('the history command is open to everyone', () => {
@@ -179,4 +185,73 @@ test('with no owner configured, the permission gate still applies', async () => 
 
   assert.equal(interaction.sent.deferred, false);
   assert.match(interaction.sent.replies[0], /need the Manage Messages permission/);
+});
+
+// --- /bingo-graph --------------------------------------------------------------
+
+const { recordSnapshot } = require('../src/history');
+
+/** A /bingo-graph interaction asking for `period`. */
+function graphInteraction(period) {
+  const sent = { edits: [], deferred: false, replies: [] };
+  return {
+    sent,
+    isChatInputCommand: () => true,
+    commandName: 'bingo-graph',
+    user: { id: '1', tag: 'someone' },
+    options: { getString: () => period },
+    get deferred() { return sent.deferred; },
+    replied: false,
+    reply: async (m) => { sent.replies.push(m); },
+    deferReply: async () => { sent.deferred = true; },
+    editReply: async (m) => { sent.edits.push(m); },
+  };
+}
+
+function historyOf(hours) {
+  let history = [];
+  const now = Date.now();
+  for (let h = hours; h >= 0; h--) {
+    const teams = [{ teamName: 'Alpha', points: (hours - h) * 10 }];
+    history = recordSnapshot(history, teams, new Date(now - h * 3600 * 1000).toISOString());
+  }
+  return history;
+}
+
+test('/bingo-graph defers, because rendering can outrun the three second window', async () => {
+  const interaction = graphInteraction('all');
+  const state = { read: () => ({ history: historyOf(24) }) };
+  await createInteractionHandler({ state, config: ownerConfig, log: { log() {} } })(interaction);
+
+  assert.equal(interaction.sent.deferred, true);
+  assert.deepEqual(interaction.sent.replies, [], 'the reply goes through the deferral');
+});
+
+test('/bingo-graph attaches the rendered chart', async () => {
+  const interaction = graphInteraction('all');
+  const state = { read: () => ({ history: historyOf(24) }) };
+  await createInteractionHandler({ state, config: ownerConfig, log: { log() {} } })(interaction);
+
+  const [edit] = interaction.sent.edits;
+  assert.equal(edit.files.length, 1);
+  assert.equal(edit.files[0].name, 'bingo-history.png');
+});
+
+test('/bingo-graph with no history explains itself instead of failing', async () => {
+  const interaction = graphInteraction('all');
+  const state = { read: () => ({ history: [] }) };
+  await createInteractionHandler({ state, config: ownerConfig, log: { log() {} } })(interaction);
+
+  const [edit] = interaction.sent.edits;
+  assert.match(edit.content, /Not enough history/);
+  assert.equal(edit.files, undefined, 'nothing to attach');
+});
+
+test('/bingo-graph is open to everyone, with no permission gate', async () => {
+  const interaction = graphInteraction('24h');
+  const state = { read: () => ({ history: historyOf(24) }) };
+  await createInteractionHandler({ state, config: ownerConfig, log: { log() {} } })(interaction);
+
+  assert.equal(interaction.sent.deferred, true, 'a plain member is not turned away');
+  assert.match(interaction.sent.edits[0].content, /the last 24 hours/);
 });

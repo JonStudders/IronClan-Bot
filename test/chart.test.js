@@ -57,7 +57,7 @@ test('the pixel data round-trips through the deflate stream', () => {
 // --- The font ----------------------------------------------------------------
 
 test('every character the charts use has a glyph', () => {
-  const used = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:-+%()/';
+  const used = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:-+%()/&\'';
   for (const char of used) {
     const rows = renderTextRows(char);
     assert.equal(rows.length, GLYPH_HEIGHT, `${char} has the right height`);
@@ -65,6 +65,44 @@ test('every character the charts use has a glyph', () => {
       assert.ok(rows.some((row) => row.includes('#')), `${char} is not blank`);
     }
   }
+});
+
+// The font is only ever asked to draw names people typed into a spreadsheet,
+// so the alphabet above is a guess. These are the real ones, and they are what
+// caught the missing ampersand and the curly apostrophe Sheets inserts.
+const LIVE_TEAM_NAMES = [
+  'Llama’s Favourite Gamers',
+  'Soaking Up Sun',
+  'BambleBoysOrGirls',
+  'Absolute Shitters',
+  'Al-Tariff Border Control',
+  'EREct & Dangerous',
+  'Pewky Blinders',
+  'Coras Rat Yappers',
+];
+
+const QUESTION_MARK = renderTextRows('?').join('/');
+
+test('every live team name draws without a missing-glyph box', () => {
+  for (const name of LIVE_TEAM_NAMES) {
+    for (const char of name) {
+      if (char === '?') continue;
+      assert.notEqual(
+        renderTextRows(char).join('/'),
+        QUESTION_MARK,
+        `"${char}" (U+${char.codePointAt(0).toString(16).padStart(4, '0')}) in "${name}" has no glyph`
+      );
+    }
+  }
+});
+
+test('a curly apostrophe is drawn as a straight one, not as a missing glyph', () => {
+  assert.deepEqual(renderTextRows('’'), renderTextRows("'"));
+  assert.deepEqual(renderTextRows('—'), renderTextRows('-'));
+});
+
+test('a character the font genuinely lacks still falls back to a question mark', () => {
+  assert.equal(renderTextRows('中').join('/'), QUESTION_MARK, 'the fallback is not lost');
 });
 
 test('confusable glyphs are drawn at different heights', () => {
@@ -150,6 +188,62 @@ test('a period restricts the chart to that window', () => {
   const day = renderPointsChart(history, { now: NOW, hours: 24 });
   assert.ok(all && day);
   assert.notDeepEqual(all, day, 'a narrower window draws a different chart');
+});
+
+// --- The shared reply builder -------------------------------------------------
+
+const { buildChartReply, CHART_PERIODS } = require('../src/chart');
+
+test('too little history explains itself rather than sending a broken image', () => {
+  const reply = buildChartReply({ history: [] }, 'all');
+  assert.equal(typeof reply, 'string');
+  assert.match(reply, /Not enough history/);
+});
+
+test('state with no history at all is treated as empty, not as a crash', () => {
+  assert.equal(typeof buildChartReply({}, 'all'), 'string');
+});
+
+test('a drawable history comes back as an attachment', () => {
+  const reply = buildChartReply({ history: buildHistory(48, ['Alpha', 'Bravo']) }, 'all');
+  assert.equal(typeof reply, 'object');
+  assert.equal(reply.files.length, 1);
+  assert.equal(reply.files[0].name, 'bingo-history.png');
+  assert.ok(Buffer.isBuffer(reply.files[0].attachment));
+  assert.match(reply.content, /Points over the whole bingo/);
+});
+
+// buildHistory ends at the fixed NOW, which is in the past. The builder reads
+// the real clock, as it does in production, so these fixtures run up to it.
+function recentHistory(hours) {
+  let history = [];
+  const now = Date.now();
+  for (let h = hours; h >= 0; h--) {
+    const teams = [{ teamName: 'Alpha', points: (hours - h) * 10 }];
+    history = recordSnapshot(history, teams, new Date(now - h * 3600 * 1000).toISOString());
+  }
+  return history;
+}
+
+test('each period labels itself in the message', () => {
+  const history = recentHistory(240);
+  assert.match(buildChartReply({ history }, '24h').content, /the last 24 hours/);
+  assert.match(buildChartReply({ history }, '7d').content, /the last 7 days/);
+  assert.match(buildChartReply({ history }, 'all').content, /the whole bingo/);
+});
+
+test('an unknown period falls back to the whole bingo rather than throwing', () => {
+  assert.match(buildChartReply({ history: recentHistory(48) }, 'nonsense').content, /the whole bingo/);
+});
+
+test('a window with nothing in it says so rather than drawing an empty chart', () => {
+  // All the history is older than the 24 hour window being asked for.
+  const stale = buildHistory(48, ['Alpha']);
+  assert.equal(typeof buildChartReply({ history: stale }, '24h'), 'string');
+});
+
+test('the periods match the choices offered on the commands', () => {
+  assert.deepEqual(Object.keys(CHART_PERIODS), ['24h', '7d', 'all']);
 });
 
 // --- Team colours ---------------------------------------------------------------
